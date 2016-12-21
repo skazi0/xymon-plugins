@@ -10,4 +10,6 @@ ln -sf $BASE/tasks.d/pfsense.cfg /etc/xymon/tasks.d/pfsense.cfg
 ln -sf $BASE/xymonserver.d/apc.cfg /etc/xymon/xymonserver.d/apc.cfg
 
 ln -sf $BASE/graphs.d/apc.cfg /etc/xymon/graphs.d/apc.cfg
+ln -sf $BASE/graphs.d/cpu.cfg /etc/xymon/graphs.d/cpu.cfg
+ln -sf $BASE/graphs.d/memory.cfg /etc/xymon/graphs.d/memory.cfg
 
