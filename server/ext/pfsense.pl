@@ -21,10 +21,18 @@ my $res;
 my $user = 'xymon';
 my $password = &get_password($host, $user);
 
+if (!$password)
+{
+    $bb->color_line('red', 'no password found');
+    $bb->send;
+    die;
+}
+
 # load page to get CSRF token
 $res = $ua->get("https://$host/");
 my $html = HTML::TreeBuilder::XPath->new_from_content($res->content);
 my $csrf = $html->findvalue('//input[@name="__csrf_magic"]/@value');
+
 
 # login
 $res = $ua->post("https://$host/", {usernamefld => $user, passwordfld => $password, login => '', __csrf_magic => $csrf});
@@ -39,6 +47,7 @@ else
     if ($res->is_error)
     {
         $bb->color_line('red', 'request4 failed: ' . $res->status_line);
+        $bb->send;
         die;
     }
     else
@@ -54,6 +63,7 @@ else
     if ($res->is_error)
     {
         $bb->color_line('red', 'request3 failed: ' . $res->status_line);
+        $bb->send;
         die;
     }
     else
@@ -89,6 +99,7 @@ else
     if ($res->is_error)
     {
         $bb->color_line('red', 'request2 failed: ' . $res->status_line);
+        $bb->send;
         die;
     }
     else
@@ -145,6 +156,7 @@ else
     if ($res->is_error)
     {
         $bb->color_line('red', 'request failed: ' . $res->status_line);
+        $bb->send;
         die;
     }
     else
@@ -168,6 +180,7 @@ else
     if ($res->is_error)
     {
         $bb->color_line('red', 'request failed: ' . $res->status_line);
+        $bb->send;
         die;
     }
     else
@@ -190,6 +203,7 @@ else
         if ($res->is_error)
         {
             $bb->color_line('red', 'request failed: ' . $res->status_line);
+            $bb->send;
             die;
         }
         else
