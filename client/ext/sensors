@@ -1,0 +1,205 @@
+#!/usr/bin/perl
+# Author: Jacek Tomasiak <jacek.tomasiak@gmail.com>
+use strict;
+# add script's directory to module search path for Hobbit.pm on non-debian systems
+use FindBin;
+use lib $FindBin::Bin;
+
+use Hobbit;
+use Data::Dumper;
+
+my $bb = new Hobbit('temperature');
+
+my @disks = ();
+my %thresh;
+
+my $HDDCACHETIME = 5; # minutes
+my $HDDCACHEFILE = "$ENV{'XYMONTMP'}/$ENV{'MACHINEDOTS'}.hddtemp.cache";
+
+&load_config("$ENV{'HOBBITCLIENTHOME'}/etc/sensors.cfg");
+# config from server overrides local settings
+&load_config("$ENV{'XYMONTMP'}/logfetch.$ENV{'MACHINEDOTS'}.cfg");
+
+#print Dumper(\%thresh);
+
+sub C2F { my $c = shift; return (9./5.) * $c + 32; }
+sub format_temp { my $in = shift; return sprintf('%.2f', $in); }
+#sub format_temp { my $in = shift; return sprintf('%.0f', $in); }
+
+#my $global_status = 'clear';
+
+$bb->print("Device\t\tTemp(C)\tTemp(F)\n");
+$bb->print("-----------------------------------\n");
+
+my $adapter = 0;
+my @output = `sensors 2>&1` or die;
+foreach my $line (@output) 
+{
+    ++$adapter if ($line =~ /^Adapter:/);
+    next if ($line !~ /^([^:]*):\s*[+]?([\d.]+)/i);
+    my ($name, $valC) = ($1, $2);
+    $name =~ s/\s+/_/gi;
+    $name = "A$adapter.$name";
+
+    my $status = 'blue';
+    my $comment = '';
+
+    if (defined $thresh{$name})
+    {
+        $comment = '(yellow: '.$thresh{$name}->[0].' red:'.$thresh{$name}->[1].')';
+        if ($valC > $thresh{$name}->[1])
+        {
+            $status = 'red';
+        }
+        elsif ($valC > $thresh{$name}->[0])
+        {
+            $status = 'yellow';
+        }
+        else
+        {
+            $status = 'green';
+        }
+    }
+
+    &color_line($bb, $status, "$name\t".&format_temp($valC)."\t".&format_temp(&C2F($valC))."\t$comment\n");
+}
+
+$bb->print("-----------------------------------\n");
+
+my @stat = stat($HDDCACHEFILE);
+my $mtime = scalar @stat ? $stat[9] : 0;
+# regenerate sensors cache if outdated
+if (time() - $mtime > $HDDCACHETIME * 60)
+{
+    open(OUT, ">$HDDCACHEFILE") or die "cannot open $HDDCACHEFILE";
+    foreach my $name (@disks)
+    {
+        my @output = `sudo hddtemp -n $name 2>&1` or die;
+        my $output = join(' ', @output);
+        chomp $output;
+
+        if ($output =~ /^(\d+)$/)
+        {
+            my $status = 'blue';
+            my $comment = '';
+            my $valC = $output;
+            if (defined $thresh{$name})
+            {
+                $comment = '(yellow: '.$thresh{$name}->[0].' red:'.$thresh{$name}->[1].')';
+                if ($valC > $thresh{$name}->[1])
+                {
+                    $status = 'red';
+                }
+                elsif ($valC > $thresh{$name}->[0])
+                {
+                    $status = 'yellow';
+                }
+                else
+                {
+                    $status = 'green';
+                }
+            }
+            print OUT "&$status $name\t".&format_temp($valC)."\t".&format_temp(&C2F($valC))."\t$comment\n";
+        }
+        else
+        {
+            print OUT $output;
+        }
+    }
+    close OUT;
+}
+
+# send cached content
+{
+    open IN, $HDDCACHEFILE or die "cannot open $HDDCACHEFILE";
+    while (my $line = <IN>)
+    {
+        if ($line =~ /^\s*&(\S+)$/)
+        {
+            $bb->color_print($1, $line);
+        }
+        else
+        {
+            $bb->print($line);
+        }
+    }
+    close IN;
+}
+
+$bb->print("-----------------------------------\n");
+@output = `readsensors 2>&1`; # skz: don't die here as not everyone has readsensors available
+foreach my $line (@output) 
+{
+    next if ($line !~ /^([^:]*):\s*[+]?([\d.]+)/i);
+    my ($name, $valC) = ($1, $2);
+    $name = "X.$name";
+
+    my $status = 'blue';
+    my $comment = '';
+
+    if (defined $thresh{$name})
+    {
+        $comment = '(yellow: '.$thresh{$name}->[0].' red:'.$thresh{$name}->[1].')';
+        if ($valC > $thresh{$name}->[1])
+        {
+            $status = 'red';
+        }
+        elsif ($valC > $thresh{$name}->[0])
+        {
+            $status = 'yellow';
+        }
+        else
+        {
+            $status = 'green';
+        }
+    }
+
+    &color_line($bb, $status, "$name\t".&format_temp($valC)."\t".&format_temp(&C2F($valC))."\t$comment\n");
+}
+
+$bb->print("-----------------------------------\n");
+
+#$bb->print("Status $global_status: All devices look okay\n");
+
+$bb->send;
+
+# skz: $bb doesn't understand blue so we need to handle it manually
+sub color_line
+{
+    my $bb = shift;
+    my $status = shift;
+    my $msg = shift;
+    if ($status ne 'blue')
+    {
+        $bb->color_line($status, $msg);
+    }
+    else
+    {
+        $bb->print("&$status $msg");
+    }
+}
+
+sub load_config
+{
+    my $path = shift;
+
+    open C, "<$path" or return;
+#    print "loading config from $path\n";
+    while (my $line = <C>)
+    {
+        next if ($line =~ /^\s*#/);
+        if ($line =~ /DISKS\s*=\s*['"](.*?)["']/)
+        {
+            @disks = split(/\s+/, $1);
+        }
+        elsif ($line =~ /SENSOR\[(.*)\]\s+(\d+)\s+(\d+)/)
+        {
+            $thresh{$1} = [$2, $3];
+        }
+        elsif ($line =~ /HDDTEMPCACHETIME=(\d+)/)
+        {
+            $HDDCACHETIME = $1;
+        }
+    }
+    close C;
+}
