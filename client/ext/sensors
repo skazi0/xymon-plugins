@@ -23,8 +23,8 @@ my $HDDCACHEFILE = "$ENV{'XYMONTMP'}/$ENV{'MACHINEDOTS'}.hddtemp.cache";
 #print Dumper(\%thresh);
 
 sub C2F { my $c = shift; return (9./5.) * $c + 32; }
-sub format_temp { my $in = shift; return sprintf('%.2f', $in); }
-#sub format_temp { my $in = shift; return sprintf('%.0f', $in); }
+#sub format_temp { my $in = shift; return sprintf('%.2f', $in); }
+sub format_temp { my $in = shift; return sprintf('%.0f', $in); }
 
 #my $global_status = 'clear';
 
