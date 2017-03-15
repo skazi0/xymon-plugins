@@ -12,6 +12,7 @@ ln -sf $BASE/tasks.d/pfsense.cfg /etc/xymon/tasks.d/pfsense.cfg
 ln -sf $BASE/clientlaunch.d/sensors.cfg /etc/xymon/clientlaunch.d/sensors.cfg
 
 ln -sf $BASE/xymonserver.d/apc.cfg /etc/xymon/xymonserver.d/apc.cfg
+ln -sf $BASE/xymonserver.d/smart.cfg /etc/xymon/xymonserver.d/smart.cfg
 
 ln -sf $BASE/graphs.d/apc.cfg /etc/xymon/graphs.d/apc.cfg
 ln -sf $BASE/graphs.d/cpu.cfg /etc/xymon/graphs.d/cpu.cfg
