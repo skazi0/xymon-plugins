@@ -1,0 +1,94 @@
+#!/usr/bin/perl -w
+use strict;
+# add script's directory to module search path for Hobbit.pm on non-debian systems
+use FindBin;
+use lib $FindBin::Bin;
+
+use Hobbit;
+
+# status state variables
+my $host;
+my $ip;
+my $test;
+
+my $status_handlers = { 'ipmi' => \&ipmi_trend };
+
+sub ipmi_trend {
+    my $line = shift;
+
+    my ($color, $name, $value) = ($line =~ /&(\w+)\s+([^|]+?)\s*\|\s*([\d.x]+)/);
+
+    # only trend color lines
+    return unless ($color);
+
+    $value = hex($value) if ($value =~ /^0x/);
+
+    my $trends = Hobbit::trends($host);
+    $trends->print("[$test,$name.rrd]\n");
+    $trends->sprintf("DS:value:GAUGE:600:U:U %f\n", $value);
+    $trends->send;
+}
+
+# generic msg handling
+my $msg_handlers = { 'status' => {
+                        'start' => \&status_start,
+                        'line' => \&status_line,
+                        'end' => \&status_end 
+                     }
+                   };
+
+my $msg_type;
+my $seq;
+
+sub start_msg {
+    my @meta = split(/\|/, shift @_);
+    if ($meta[0] =~ /^([^#]+)#(\d+)\/(.*)$/) {
+        $msg_type = $1;
+        $seq = $2;
+    } else {
+        # ERROR
+    }
+    $msg_handlers->{$msg_type}->{'start'}(@meta) if (defined $msg_handlers->{$msg_type}->{'start'});
+}
+
+sub end_msg {
+    $msg_handlers->{$msg_type}->{'end'}() if (defined $msg_handlers->{$msg_type}->{'end'});
+    $msg_type = $seq = undef;
+}
+
+# status handling
+my $section;
+
+sub status_start {
+    my @meta = @_;
+
+    $ip = $meta[2];
+    $host = $meta[4];
+    $test = $meta[5];
+}
+
+sub status_line {
+    my $line = shift;
+    if ($line =~ /^status /) {
+        # skip status <hostname>.<class> ... line
+    } else {
+        $status_handlers->{$test}($line) if (defined $status_handlers->{$test});
+    }
+}
+
+sub status_end {
+    $ip = $host = $test = undef;
+}
+
+while (my $line = <STDIN>) {
+    chomp $line;
+    if ($line =~ /^@@(.*)$/) {
+        if ($1) {
+            &start_msg($1);
+        } else {
+            &end_msg();
+        }
+    } elsif (defined $msg_type) {
+        $msg_handlers->{$msg_type}->{'line'}($line) if (defined $msg_handlers->{$msg_type}->{'line'});
+    }
+}
