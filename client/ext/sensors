@@ -31,15 +31,17 @@ sub format_temp { my $in = shift; return sprintf('%.0f', $in); }
 $bb->print("Device\t\tTemp(C)\tTemp(F)\n");
 $bb->print("-----------------------------------\n");
 
-my $adapter = 0;
+my %adapters;
+my $adapter;
+my $prevLine;
 my @output = `sensors 2>&1` or die;
-foreach my $line (@output) 
+foreach my $line (@output)
 {
-    ++$adapter if ($line =~ /^Adapter:/);
+    $adapter = $prevLine if ($line =~ /^Adapter:/);
+    $prevLine = $line;
     next if ($line !~ /^([^:]*):\s*[+]?([\d.]+)/i);
     my ($name, $valC) = ($1, $2);
     $name =~ s/\s+/_/gi;
-    $name = "A$adapter.$name";
 
     my $status = 'blue';
     my $comment = '';
@@ -61,7 +63,18 @@ foreach my $line (@output)
         }
     }
 
-    &color_line($bb, $status, "$name\t".&format_temp($valC)."\t".&format_temp(&C2F($valC))."\t$comment\n");
+    $adapters{$adapter}{$name}{'color'} = $status;
+    $adapters{$adapter}{$name}{'text'} = "$name\t".&format_temp($valC)."\t".&format_temp(&C2F($valC))."\t$comment\n";
+}
+
+my $aindex = 0;
+foreach my $aname (sort keys %adapters)
+{
+    ++$aindex;
+    for my $name (sort keys %{$adapters{$aname}}) {
+        my $data = $adapters{$aname}{$name};
+        &color_line($bb, $data->{'color'}, "A$aindex.".$data->{'text'});
+    }
 }
 
 $bb->print("-----------------------------------\n");
