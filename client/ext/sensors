@@ -126,9 +126,10 @@ if (time() - $mtime > $HDDCACHETIME * 60)
     open IN, $HDDCACHEFILE or die "cannot open $HDDCACHEFILE";
     while (my $line = <IN>)
     {
-        if ($line =~ /^\s*&(\S+)$/)
+        chomp $line;
+        if ($line =~ /^\s*&(\S+)\s+(.*)/)
         {
-            $bb->color_print($1, $line);
+            &color_line($bb, $1, "$2\n");
         }
         else
         {
