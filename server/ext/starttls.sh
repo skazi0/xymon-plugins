@@ -29,7 +29,7 @@ $XYMONHOME/bin/xymongrep --noextras "starttls*" | while read ip host hash line; 
             start=$(date -d "$startstr" +%s)
             end=$(date -d "$endstr" +%s)
             today=$(date +%s)
-            daysleft=$(( ($end-$today)/(24*60*60) ))
+            daysleft=$(( ($end-$today)/(24*60*60)+1 ))
             size=$(echo "$cert" | grep 'Public-Key:' | cut -d':' -f2)
 
             if [[ $daysleft -le $REDDAYS ]]; then
