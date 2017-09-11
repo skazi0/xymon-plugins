@@ -1,0 +1,79 @@
+#!/usr/bin/perl
+# $Id: sensors 131 2012-06-01 11:36:53Z skazi $
+# Author: Jacek Tomasiak <jacek.tomasiak@gmail.com>
+use strict;
+# add script's directory to module search path for Hobbit.pm on non-debian systems
+use FindBin;
+use lib $FindBin::Bin;
+
+use Hobbit;
+use Data::Dumper;
+
+my $ip = $ARGV[0];
+my $host = $ARGV[1];
+
+# ifstat
+my $bb = new Hobbit({'test' => 'ifstat', 'type' => 'data', 'hostname' => $host, 'text' => "linux\n"});
+my $ifs = &snmp_get_multi($host, ['ifDescr', 'ifInOctets', 'ifOutOctets', 'ifOperStatus']);
+if (defined $ifs)
+{
+    for my $if (keys %{$ifs})
+    {
+        my $name = $ifs->{$if}->{'ifDescr'};
+        # rename some common names
+        $name =~ s/loopback/lo/i;
+        $name =~ s/ethernet(\D|$)/eth0/i;
+        $name =~ s/wifiUAP/wifi9/i;
+
+        # find shortname inside description (linux formatting accepts very limited set of names)
+        if ($name =~ /\b((?:eth|port|tap|tun|vif|vmk|vmnic|vSwitch|wifi|xenapi|xenbr)\d+|lo)\b/)
+        {
+            $name = $1;
+        }
+        else # fallback to generic names
+        {
+            $name = "iface$if";
+        }
+
+        my $status = uc($ifs->{$if}->{'ifOperStatus'});
+        $status =~ s/[^A-Z]//g;
+        $bb->print("$name interface\n");
+        $bb->print("    $status\n");
+        $bb->print("    RX bytes:".$ifs->{$if}->{'ifInOctets'}." (--- GiB) TX bytes:".$ifs->{$if}->{'ifOutOctets'}." (--- GiB)\n");
+    }
+    $bb->send;
+}
+
+sub snmp_get
+{
+    my $host = shift;
+    my $oid = shift;
+
+    my $out = `snmpget -v1 -c public $ip $oid 2> /dev/null`;
+    return undef if ($?);
+
+    my ($type, $val) = ($out =~ /=\s*(.*?)\s*:\s*(.*)/);
+
+    return $val;
+}
+
+sub snmp_get_multi
+{
+    my $host = shift;
+    my @oids = @{shift()};
+    my $prefix = shift;
+    $prefix = defined($prefix) ? ($prefix.'::') : '';
+    my $out = {};
+    foreach my $oid (@oids)
+    {
+        my $text = `snmpwalk -v1 -c public $ip $prefix$oid 2> /dev/null`;
+        return undef if ($?);
+
+        for my $line (split(/\n/, $text))
+        {
+            my ($id, $val) = ($line =~ /$oid\.(\S+)\s*=\s*[^:]+:\s*(.*)/);
+            $out->{$id}->{$oid} = $val;
+        }
+    }
+    return $out;
+}

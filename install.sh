@@ -6,6 +6,8 @@ ln -sf $BASE/server/ext/pfsense.pl /usr/lib/xymon/server/ext/pfsense.pl
 ln -sf $BASE/server/ext/ipmi_trends /usr/lib/xymon/server/ext/ipmi_trends
 ln -sf $BASE/server/ext/starttls.sh /usr/lib/xymon/server/ext/starttls.sh
 ln -sf $BASE/server/ext/hpprinter.sh /usr/lib/xymon/server/ext/hpprinter.sh
+ln -sf $BASE/server/ext/snmp-ifstat.sh /usr/lib/xymon/server/ext/snmp-ifstat.sh
+ln -sf $BASE/server/ext/snmp-ifstat.pl /usr/lib/xymon/server/ext/snmp-ifstat.pl
 
 ln -sf $BASE/client/ext/sensors /usr/lib/xymon/client/ext/sensors
 
@@ -14,6 +16,7 @@ ln -sf $BASE/tasks.d/pfsense.cfg /etc/xymon/tasks.d/pfsense.cfg
 ln -sf $BASE/tasks.d/ipmi_trends.cfg /etc/xymon/tasks.d/ipmi_trends.cfg
 ln -sf $BASE/tasks.d/starttls.cfg /etc/xymon/tasks.d/starttls.cfg
 ln -sf $BASE/tasks.d/hpprinter.cfg /etc/xymon/tasks.d/hpprinter.cfg
+ln -sf $BASE/tasks.d/snmp-ifstat.cfg /etc/xymon/tasks.d/snmp-ifstat.cfg
 
 ln -sf $BASE/clientlaunch.d/sensors.cfg /etc/xymon/clientlaunch.d/sensors.cfg
 
