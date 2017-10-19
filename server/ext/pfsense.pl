@@ -4,6 +4,7 @@ use warnings;
 use Hobbit;
 use LWP::Simple;
 use HTML::TreeBuilder::XPath;
+use JSON;
 
 my $ip = $ARGV[0];
 my $host = $ARGV[1];
@@ -106,48 +107,48 @@ else
     {
         my @stats = split(/\|/, $res->content);
 
-        # updateUptime(values[2]);
-        # updateLoadAverage(values[9]);
+        # updateUptime(values[3]);
+        # updateLoadAverage(values[8]);
 
-        # updateDateTime(values[5]);
+        # updateDateTime(values[6]);
         $client->print("[date]\n");
-        $client->print($stats[5]."\n");
+        $client->print($stats[6]."\n");
 
         # for some reason [date] can't be the last section or the cpu status will be incorrectly generated
         $client->print("[dummy]\n");
 
-#       updateCPU(values[0]);
+#       updateCPU(values[0], values[1]);
 #print "cpu:".$stats[0]."\n";
 
-        # updateMemory(values[1]);
+        # updateMemory(values[2]);
         $trends->print("[memory.actual.rrd]\n");
-        $trends->sprintf("DS:realmempct:GAUGE:600:0:U %g\n", $stats[1]);
+        $trends->sprintf("DS:realmempct:GAUGE:600:0:U %g\n", $stats[2]);
         $trends->print("[memory.real.rrd]\n");
         $trends->sprintf("DS:realmempct:GAUGE:600:0:U U\n");
         # no swap info in getstats output
         $trends->print("[memory.swap.rrd]\n");
         $trends->sprintf("DS:realmempct:GAUGE:600:0:U U\n");
 
-        # updateState(values[3]);
-        # updateStateMeter(values[12]); # percent recalcualted below
-        my ($statesUsed, $statesMax) = split(/\//, $stats[3]);
+        # updateState(values[4]);
+        my ($statesUsed, $statesMax) = split(/\//, $stats[4]);
         $trends->print ("[states.rrd]\n");
         $trends->sprintf ("DS:used:GAUGE:600:U:U %d\n", $statesUsed);
         $trends->sprintf ("DS:max:GAUGE:600:U:U %d\n", $statesMax);
         $trends->sprintf ("DS:usedpct:GAUGE:600:U:U %g\n", 100. * $statesUsed / $statesMax);
+        # updateStateMeter(values[11]); # percent recalcualted above
 
-#       updateTemp(values[4]);
+#       updateTemp(values[5]);
 #       updateInterfaceStats(values[6]);
 #       updateInterfaces(values[7]);
-#       updateCpuFreq(values[8]);
+#       updateCpuFreq(values[7]);
 
-        # updateMbuf(values[10]);
-        # updateMbufMeter(values[11]); # percent recalculated below
-        my ($mbufUsed, $mbufMax) = split(/\//, $stats[10]);
+        # updateMbuf(values[9]);
+        my ($mbufUsed, $mbufMax) = split(/\//, $stats[9]);
         $trends->print ("[mbuf.rrd]\n");
         $trends->sprintf ("DS:used:GAUGE:600:U:U %d\n", $mbufUsed);
         $trends->sprintf ("DS:max:GAUGE:600:U:U %d\n", $mbufMax);
         $trends->sprintf ("DS:usedpct:GAUGE:600:U:U %g\n", 100. * $mbufUsed / $mbufMax);
+        # updateMbufMeter(values[10]); # percent recalculated above
     }
 
     # get update status
@@ -176,7 +177,7 @@ else
 
     # get interface name -> descr mapping
     my %ifmap;
-    $res = $ua->get("https://$host/widgets/widgets/interfaces.widget.php");
+    $res = $ua->get("https://$host/status_interfaces.php");
     if ($res->is_error)
     {
         $bb->color_line('red', 'request failed: ' . $res->status_line);
@@ -187,19 +188,21 @@ else
     {
         my $html = HTML::TreeBuilder::XPath->new;
         $html->parse($res->content);
-        my $iflinks = $html->findnodes('//a');
-        foreach my $iflink (@{$iflinks})
+        my $ifheads = $html->findnodes('//h2');
+        foreach my $ifhead (@{$ifheads})
         {
-            my $ifdescr = $iflink->as_trimmed_text;
-            my ($ifname) = ($iflink->attr('href') =~ /\?if=(.*)/);
-            $ifmap{$ifname} = $ifdescr;
+            my $ifdescr = $ifhead->as_trimmed_text;
+            if ($ifdescr =~ /(.+)\s+Interface\s+\((.+),\s*(.+)\)/)
+            {
+                $ifmap{$1} = {'if'=>$2,'realif'=>$3};
+            }
         }
     }
 
     # get interface stats
     foreach my $ifname (keys %ifmap)
     {
-        $res = $ua->get("https://$host/ifstats.php?if=$ifname");
+        $res = $ua->post("https://$host/ifstats.php", $ifmap{$ifname});
         if ($res->is_error)
         {
             $bb->color_line('red', 'request failed: ' . $res->status_line);
@@ -208,15 +211,30 @@ else
         }
         else
         {
-            my $text = $res->content;
-            chomp $text;
-            my @parts = split(/\|/, $text);
-            die unless (scalar @parts == 3);
-
-            my $name = $ifmap{$ifname};
-            $trends->print ("[ifstat,$name.rrd]\n");
-            $trends->sprintf ("DS:bytesReceived:DERIVE:600:0:U %d\n", int($parts[1]));
-            $trends->sprintf ("DS:bytesSent:DERIVE:600:0:U %d\n", int($parts[2]));
+            my ($in, $out);
+            if ($res->header('content-type') eq 'application/json')
+            {
+                my $ifif = $ifmap{$ifname}{'if'};
+                my $json = from_json($res->content);
+                my $ifstat = $json->{$ifif};
+                for my $item (@{$ifstat})
+                {
+                    $in = int($item->{'values'}[1]) if ($item->{'key'} eq $ifif.'in');
+                    $out = int($item->{'values'}[1]) if ($item->{'key'} eq $ifif.'out');
+                }
+            }
+            else
+            {
+                my $text = $res->content;
+                chomp $text;
+                my @parts = split(/\|/, $text);
+                die unless (scalar @parts == 3);
+                $in = int($parts[1]);
+                $out = int($parts[2]);
+            }
+            $trends->print ("[ifstat,$ifname.rrd]\n");
+            $trends->sprintf ("DS:bytesReceived:DERIVE:600:0:U %d\n", $in);
+            $trends->sprintf ("DS:bytesSent:DERIVE:600:0:U %d\n", $out);
         }
     }
 }
