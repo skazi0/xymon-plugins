@@ -1,0 +1,123 @@
+#!/bin/bash
+
+#
+# BBPROG SHOULD JUST CONTAIN THE NAME OF THIS FILE
+# USEFUL WHEN YOU GET ENVIRONMENT DUMPS TO LOCATE
+# THE OFFENDING SCRIPT...
+#
+BBPROG=bb-mysqlstat.sh; export BBPROG
+
+#
+# TEST NAME: THIS WILL BECOME A COLUMN ON THE DISPLAY
+# IT SHOULD BE AS SHORT AS POSSIBLE TO SAVE SPACE...
+# NOTE YOU CAN ALSO CREATE A HELP FILE FOR YOUR TEST
+# WHICH SHOULD BE PUT IN www/help/$TEST.html.  IT WILL
+# BE LINKED INTO THE DISPLAY AUTOMATICALLY.
+#
+TEST="mysql"
+
+#
+# BBHOME CAN BE SET MANUALLY WHEN TESTING.
+# OTHERWISE IT SHOULD BE SET FROM THE BB ENVIRONMENT
+#
+
+if test "$BBHOME" = ""
+then
+        echo "BBHOME is not set... exiting"
+        exit 1
+fi
+
+if test ! "$XYMONTMP"                      # GET DEFINITIONS IF NEEDED
+then
+         # echo "*** LOADING BBDEF ***"
+        . $BBHOME/etc/bbdef.sh          # INCLUDE STANDARD DEFINITIONS
+fi
+
+#
+# NOW COLLECT SOME DATA
+# IN THIS CASE, IT'S THE CURRENT MEMORY USAGE OF THE SYSTEM
+
+# SELECT SOME LEVELS... GREEN IS THE DEFAULT...
+
+declare -i MYSQL_UPTIME
+declare -i MYSQL_THREADS
+declare -i MYSQL_SLOWQ
+declare -i MYSQL_QPS
+declare -i MYSQL_OLDUPTIME
+declare -i MYSQL_OLDSLOWQ
+declare -i MYSQL_DSLOWQ
+
+#
+# GET CURRENT VALUES
+#
+MYSQLADMIN=`/usr/bin/mysqladmin status`
+MYSQL_UPTIME=`echo $MYSQLADMIN | $AWK '{ print $2; }'`
+MYSQL_THREADS=`echo $MYSQLADMIN | $AWK '{ print $4; }'`
+MYSQL_SLOWQ=`echo $MYSQLADMIN | $AWK '{ print $9; }'`
+MYSQL_QPSFRAC=`echo $MYSQLADMIN | $AWK '{ print $22; }'`
+MYSQL_QPS=${MYSQL_QPSFRAC%%.*}
+
+# skz: ncv expects one entry per line
+MYSQL_STATUS=`echo $MYSQLADMIN | $SED -r 's/(:\s[0-9.]+\s*)/\1\n/g'`
+
+#
+# GET OLD VALUES
+#
+
+MYSQL_OLDUPTIME=`$CAT $XYMONTMP/$MACHINE.$TEST.mysqluptime.log`
+MYSQL_OLDSLOWQ=`$CAT $XYMONTMP/$MACHINE.$TEST.mysqlslowq.log`
+
+#
+# WRITE OUR OWN VALUES TO LOG
+#
+echo $MYSQL_UPTIME > $XYMONTMP/$MACHINE.$TEST.mysqluptime.log
+echo $MYSQL_SLOWQ > $XYMONTMP/$MACHINE.$TEST.mysqlslowq.log
+
+#
+# COMPUTE DIFFERENCES
+#
+MYSQL_DSLOWQ=$(($MYSQL_SLOWQ - $MYSQL_OLDSLOWQ))
+
+COLOR="green"
+STATUS="Mysql OK"
+
+#
+# HANDLE YELLOW CONDITIONS
+#
+
+if [ $MYSQL_UPTIME -le $MYSQL_OLDUPTIME ]
+then
+   COLOR="yellow"
+   STATUS="Mysql Recently Restarted"
+fi
+
+if [ $MYSQL_THREADS -ge 80 ]
+then
+   COLOR="yellow"
+   STATUS="Mysql high threads"
+fi
+
+if [ $MYSQL_DSLOWQ -ge 10 ]
+then
+   COLOR="yellow"
+   STATUS="Mysql slow queries"
+fi
+
+#
+# HANDLE RED CONDITIONS
+#
+
+if [ $MYSQL_THREADS -ge 150 ]
+then
+   COLOR="red"
+   STATUS="Mysql very high threads"
+fi
+
+if [ $MYSQL_DSLOWQ -ge 30 ]
+then
+   COLOR="red"
+   STATUS="Mysql very slow queries"
+fi
+
+    $BB $BBDISP "status $MACHINEDOTS.$TEST $COLOR `date` - $STATUS 
+$MYSQL_STATUS"
