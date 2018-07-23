@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# To enable zyxel-snmp tests, add the "zyxel-snmp" tag to hosts.cfg. place password in switchpasswd file in $XYMONHOME directory
+import os
+import subprocess
+import Hobbit
+import netsnmp
+from collections import defaultdict
+
+username = 'status'
+passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'switchpasswd')
+
+def get_password(host, username, passfile):
+    with open(passfile) as f:
+        for line in f.read().splitlines():
+            parts = line.split(':')
+            if parts[0:2] == [host, username]:
+                return parts[2]
+    return ''
+
+def fetch_snmp_values(ip, host, username, password, query):
+    oid = netsnmp.VarList(netsnmp.Varbind(query))
+
+    netsnmp.snmpwalk(oid, DestHost=ip, Version=3, SecName=username, SecLevel='authNoPriv', AuthProto='SHA', AuthPass=password)
+
+    return oid
+
+def split_snmp_name(name, props):
+    for prop in props:
+        if prop in name:
+            return (name.replace(prop, ''), prop)
+    return (name, None)
+
+def parse_snmp_values(values, prefix, props):
+    types = {
+        'OCTETSTR': str,
+        'INTEGER': int,
+    }
+    ret = defaultdict(dict)
+    for vb in values:
+        name = vb.tag.replace(prefix, '')
+        name, prop = split_snmp_name(name, props)
+        if prop:
+            prop = prop[0].lower() + prop[1:]
+        type = name.lower()
+        name += vb.iid
+        ret[name][prop] = types.get(vb.type, str)(vb.val)
+        ret[name]['type'] = type
+    return ret
+
+def monitor_switch(ip, host):
+    password = get_password(host, username, passwordfile)
+
+    # TODO: add other colors (default is red)
+    status_colors = {
+        'normal': 'green',
+    }
+
+    factors = {
+        'voltage': 0.001,
+    }
+
+    units = {
+        'temperature': '&deg;C',
+        'fanrpm': 'RPM',
+        'voltage': 'V',
+    }
+
+    values = fetch_snmp_values(ip, host, username, password, 'ZYXEL-ES-SMI::esMgmt.26')
+
+    bb = Hobbit.Hobbit(test='temp', hostname=host)
+    trends = Hobbit.trends(hostname=host)
+
+    if not values:
+        bb.color_line('red', 'Error reading SNMP values from device.')
+        bb.send()
+        return
+
+    sensors = parse_snmp_values(values, 'zyHwMonitor', ['LowThreshold', 'HighThreshold', 'NominalValue', 'CurrentValue', 'Status', 'MaxValue', 'MinValue', 'Description'])
+
+    for name,data in sensors.iteritems():
+        datatype = data['type']
+        data['currentValue'] *= factors.get(datatype, 1.0)
+        bb.color_line(status_colors.get(data['status'].lower(), 'red'), '%s: %g %s' % (data['description'], data['currentValue'], units[datatype]))
+
+        trends.lineprint("[temp,%s.rrd]" % data['description']);
+        trends.lineprint("DS:temp:GAUGE:600:U:U %f" % data['currentValue']);
+
+    bb.send()
+    trends.send()
+
+hosts = subprocess.Popen('xymongrep --noextras zyxel-snmp', shell=True, stdout=subprocess.PIPE)
+for line in hosts.stdout:
+    ip, host = line.split(' ')[:2]
+    monitor_switch(ip, host)

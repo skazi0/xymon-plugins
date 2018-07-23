@@ -1,5 +1,6 @@
 #!/bin/sh
 BASE=$(dirname $(readlink -f $0))
+ln -sf $BASE/server/ext/Hobbit.py /usr/lib/xymon/server/ext/Hobbit.py
 ln -sf $BASE/server/ext/apc.sh /usr/lib/xymon/server/ext/apc.sh
 ln -sf $BASE/server/ext/pfsense.sh /usr/lib/xymon/server/ext/pfsense.sh
 ln -sf $BASE/server/ext/pfsense.pl /usr/lib/xymon/server/ext/pfsense.pl
@@ -8,6 +9,7 @@ ln -sf $BASE/server/ext/starttls.sh /usr/lib/xymon/server/ext/starttls.sh
 ln -sf $BASE/server/ext/hpprinter.sh /usr/lib/xymon/server/ext/hpprinter.sh
 ln -sf $BASE/server/ext/snmp-ifstat.sh /usr/lib/xymon/server/ext/snmp-ifstat.sh
 ln -sf $BASE/server/ext/snmp-ifstat.pl /usr/lib/xymon/server/ext/snmp-ifstat.pl
+ln -sf $BASE/server/ext/zyxel-snmp.py /usr/lib/xymon/server/ext/zyxel-snmp.py
 
 ln -sf $BASE/client/ext/sensors /usr/lib/xymon/client/ext/sensors
 ln -sf $BASE/client/ext/mysql /usr/lib/xymon/client/ext/mysql
@@ -18,6 +20,7 @@ ln -sf $BASE/tasks.d/ipmi_trends.cfg /etc/xymon/tasks.d/ipmi_trends.cfg
 ln -sf $BASE/tasks.d/starttls.cfg /etc/xymon/tasks.d/starttls.cfg
 ln -sf $BASE/tasks.d/hpprinter.cfg /etc/xymon/tasks.d/hpprinter.cfg
 ln -sf $BASE/tasks.d/snmp-ifstat.cfg /etc/xymon/tasks.d/snmp-ifstat.cfg
+ln -sf $BASE/tasks.d/zyxel-snmp.cfg /etc/xymon/tasks.d/zyxel-snmp.cfg
 
 ln -sf $BASE/clientlaunch.d/sensors.cfg /etc/xymon/clientlaunch.d/sensors.cfg
 ln -sf $BASE/clientlaunch.d/mysql.cfg /etc/xymon/clientlaunch.d/mysql.cfg
