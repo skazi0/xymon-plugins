@@ -66,6 +66,10 @@ def monitor_switch(ip, host):
         'voltage': 'V',
     }
 
+    prefix = {
+        'temperature': 'temp',
+    }
+
     values = fetch_snmp_values(ip, host, username, password, 'ZYXEL-ES-SMI::esMgmt.26')
 
     bb = Hobbit.Hobbit(test='temp', hostname=host)
@@ -83,8 +87,8 @@ def monitor_switch(ip, host):
         data['currentValue'] *= factors.get(datatype, 1.0)
         bb.color_line(status_colors.get(data['status'].lower(), 'red'), '%s: %g %s' % (data['description'], data['currentValue'], units[datatype]))
 
-        trends.lineprint("[temp,%s.rrd]" % data['description']);
-        trends.lineprint("DS:temp:GAUGE:600:U:U %f" % data['currentValue']);
+        trends.lineprint("[%s,%s.rrd]" % (prefix.get(datatype, datatype), data['description']));
+        trends.lineprint("DS:%s:GAUGE:600:U:U %f" % (prefix.get(datatype, datatype), data['currentValue']));
 
     bb.send()
     trends.send()
