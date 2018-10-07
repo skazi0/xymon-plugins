@@ -1,0 +1,49 @@
+#!/usr/bin/perl -w
+
+# Monitor devices in /proc/mdstat
+# Test will go red when a disk has failed (F) or is not usable [_]
+
+#Personalities : [raid1] 
+#md7 : active raid1 dm-51[0] dm-32[1]
+#      1953118336 blocks [2/2] [UU]
+#      
+#md4 : active raid1 dm-22[0] dm-44[1]
+#      1953118336 blocks [2/2] [UU]
+#      [=======>.............]  resync = 37.6% (735336064/1953118336) finish=527.5min speed=38470K/sec
+#md2 : active raid1 dm-36[0] dm-28[1]
+#      42328960 blocks [2/2] [UU]
+#      
+#unused devices: <none>
+
+use strict;
+use Hobbit;
+
+my $bb = new Hobbit ('mdstat');
+
+open(MDSTAT, '<', "/proc/mdstat") or die "Can't read from /proc/mdstat: $!";
+while (<MDSTAT>) {
+	my $color = 'clear';
+	$color = 'green' if /\[U+\]/;
+	$color = 'red' if /\(F\)/ or /\[U*_U*\]/;
+	$color = 'yellow' if / (check|resync|recovery) = /;
+	$bb->color_line ($color, $_);
+}
+close MDSTAT;
+
+# skz: check mismatch counts
+$bb->print("\nMismatch counts:\n");
+open SYSMD, "find /sys/block -name 'md*' |" or die "/sys/block/md*: $!";
+while (<SYSMD>) {
+    chomp;
+    my $color = 'green';
+    my ($dev) = ($_ =~ /(md\d+)/);
+    my $path = "$_/md/mismatch_cnt\n";
+    open CNT, $path or die "$path: $!";
+    my $count = int(<CNT>);
+    close CNT;
+    $color = 'red' if ($count > 0);
+    $bb->color_line($color, "$dev : $count\n");
+}
+close SYSMD;
+
+$bb->send;

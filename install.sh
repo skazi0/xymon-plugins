@@ -11,6 +11,7 @@ ln -sf $BASE/server/ext/snmp-ifstat.sh /usr/lib/xymon/server/ext/snmp-ifstat.sh
 ln -sf $BASE/server/ext/snmp-ifstat.pl /usr/lib/xymon/server/ext/snmp-ifstat.pl
 ln -sf $BASE/server/ext/zyxel-snmp.py /usr/lib/xymon/server/ext/zyxel-snmp.py
 
+ln -sf $BASE/client/ext/mdstat-ext /usr/lib/xymon/client/ext/mdstat-ext
 ln -sf $BASE/client/ext/sensors /usr/lib/xymon/client/ext/sensors
 ln -sf $BASE/client/ext/mysql /usr/lib/xymon/client/ext/mysql
 
@@ -22,6 +23,7 @@ ln -sf $BASE/tasks.d/hpprinter.cfg /etc/xymon/tasks.d/hpprinter.cfg
 ln -sf $BASE/tasks.d/snmp-ifstat.cfg /etc/xymon/tasks.d/snmp-ifstat.cfg
 ln -sf $BASE/tasks.d/zyxel-snmp.cfg /etc/xymon/tasks.d/zyxel-snmp.cfg
 
+ln -sf $BASE/clientlaunch.d/mdstat-ext.cfg /etc/xymon/clientlaunch.d/mdstat-ext.cfg
 ln -sf $BASE/clientlaunch.d/sensors.cfg /etc/xymon/clientlaunch.d/sensors.cfg
 ln -sf $BASE/clientlaunch.d/mysql.cfg /etc/xymon/clientlaunch.d/mysql.cfg
 
