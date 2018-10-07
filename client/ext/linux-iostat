@@ -1,0 +1,78 @@
+#!/usr/bin/perl
+
+# skz: script from: http://www.docum.org/drupal/content/linux-iotstat-graphs
+
+use strict ;
+
+my $rrd_return ;
+
+# y for debugging
+my $debug = "n" ;
+
+my %result ;
+
+# Collect the bytes statistics of the disks
+foreach my $vmstat (`iostat -d -k -p ALL`) {
+   chomp $vmstat ;
+
+   if ( $vmstat eq "" ) { next ; } # Skip empty lines
+   if ( $vmstat =~ /^Linux/ ) { next ; }
+   if ( $vmstat =~ /^Device:/ ) { next ; }
+   if ( $vmstat =~ /^ram/ ) { next ; }
+   if ( $vmstat =~ /^loop/ ) { next ; }
+   if ( $vmstat =~ /^sr0/ ) {  next ; }
+   if ( $vmstat =~ /^sd[a-z]/ or $vmstat =~ /^hd[a-z]/ or $vmstat =~ /^md\d/ ) {
+      $vmstat =~ s/\.//g ;
+      $vmstat =~ s/,//g ;
+      my @split = split " ", $vmstat ;
+      $result{$split[0]} .= $split[1] . ":" . $split[4] . ":" . $split[5] ;
+   } else {
+   }
+}
+
+# Collect the bloks statistics of the disks
+foreach my $vmstat (`iostat -d -p ALL`) {
+   chomp $vmstat ;
+
+   if ( $vmstat eq "" ) { next ; } # Skip empty lines
+   if ( $vmstat =~ /^Linux/ ) { next ; }
+   if ( $vmstat =~ /^Device:/ ) { next ; }
+   if ( $vmstat =~ /^ram/ ) { next ; }
+   if ( $vmstat =~ /^loop/ ) { next ; }
+   if ( $vmstat =~ /^sr0/ ) { next ; }
+   if ( $vmstat =~ /^sd[a-z]/ or $vmstat =~ /^hd[a-z]/ or $vmstat =~ /^md\d/ ) {
+      $vmstat =~ s/\.//g ;
+      $vmstat =~ s/,//g ;
+      my @split = split " ", $vmstat ;
+      $result{$split[0]} .= ":" . $split[4] . ":" . $split[5] ;
+   } else {
+   }
+}
+
+#use Data::Dumper ;
+#print Dumper {%result} ;
+#print "\n" ;
+foreach my $key (keys(%result)) {
+   my @split = split ":", $result{$key} ;
+   # If there is number at the end, it is a partition, otherwise it is the whole disk
+   if ( $key =~ /\d$/ ) {
+      $rrd_return .= "[iostat-part.$key.rrd]\n" ;
+   } else {
+      $rrd_return .= "[iostat-disk.$key.rrd]\n" ;
+   }
+   $rrd_return .= "DS:tps:GAUGE:600:0:U $split[0]\n" ;
+   $rrd_return .= "DS:Kb_read:DERIVE:600:0:U $split[1]\n" ;
+   $rrd_return .= "DS:Kb_wrtn:DERIVE:600:0:U $split[2]\n" ;
+   $rrd_return .= "DS:blk_read:DERIVE:600:0:U $split[3]\n" ;
+   $rrd_return .= "DS:blk_wrtn:DERIVE:600:0:U $split[4]\n" ;
+   $rrd_return .= "\n" ;
+
+}
+
+$rrd_return = "$ENV{BB} $ENV{BBDISP} \"data $ENV{MACHINE}.trends\n" . $rrd_return . "\"\n" ;
+
+if ( $debug eq "y" ) {
+   print "$rrd_return" ;
+} else {
+   system ( $rrd_return ) ;
+}

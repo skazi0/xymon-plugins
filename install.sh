@@ -14,6 +14,7 @@ ln -sf $BASE/server/ext/zyxel-snmp.py /usr/lib/xymon/server/ext/zyxel-snmp.py
 ln -sf $BASE/client/ext/mdstat-ext /usr/lib/xymon/client/ext/mdstat-ext
 ln -sf $BASE/client/ext/sensors /usr/lib/xymon/client/ext/sensors
 ln -sf $BASE/client/ext/mysql /usr/lib/xymon/client/ext/mysql
+ln -sf $BASE/client/ext/linux-iostat /usr/lib/xymon/client/ext/linux-iostat
 
 ln -sf $BASE/tasks.d/apc.cfg /etc/xymon/tasks.d/apc.cfg
 ln -sf $BASE/tasks.d/pfsense.cfg /etc/xymon/tasks.d/pfsense.cfg
@@ -26,6 +27,7 @@ ln -sf $BASE/tasks.d/zyxel-snmp.cfg /etc/xymon/tasks.d/zyxel-snmp.cfg
 ln -sf $BASE/clientlaunch.d/mdstat-ext.cfg /etc/xymon/clientlaunch.d/mdstat-ext.cfg
 ln -sf $BASE/clientlaunch.d/sensors.cfg /etc/xymon/clientlaunch.d/sensors.cfg
 ln -sf $BASE/clientlaunch.d/mysql.cfg /etc/xymon/clientlaunch.d/mysql.cfg
+ln -sf $BASE/clientlaunch.d/linux-iostat.cfg /etc/xymon/clientlaunch.d/linux-iostat.cfg
 
 ln -sf $BASE/xymonserver.d/apc.cfg /etc/xymon/xymonserver.d/apc.cfg
 ln -sf $BASE/xymonserver.d/smart.cfg /etc/xymon/xymonserver.d/smart.cfg
@@ -33,6 +35,7 @@ ln -sf $BASE/xymonserver.d/ipmi.cfg /etc/xymon/xymonserver.d/ipmi.cfg
 ln -sf $BASE/xymonserver.d/printer.cfg /etc/xymon/xymonserver.d/printer.cfg
 ln -sf $BASE/xymonserver.d/mysql.cfg /etc/xymon/xymonserver.d/mysql.cfg
 ln -sf $BASE/xymonserver.d/temp_multigraph.cfg /etc/xymon/xymonserver.d/temp_multigraph.cfg
+ln -sf $BASE/xymonserver.d/linux-iostat.cfg /etc/xymon/xymonserver.d/linux-iostat.cfg
 
 ln -sf $BASE/graphs.d/apc.cfg /etc/xymon/graphs.d/apc.cfg
 ln -sf $BASE/graphs.d/cpu.cfg /etc/xymon/graphs.d/cpu.cfg
@@ -43,4 +46,5 @@ ln -sf $BASE/graphs.d/printer.cfg /etc/xymon/graphs.d/printer.cfg
 ln -sf $BASE/graphs.d/mysql.cfg /etc/xymon/graphs.d/mysql.cfg
 ln -sf $BASE/graphs.d/voltage.cfg /etc/xymon/graphs.d/voltage.cfg
 ln -sf $BASE/graphs.d/fanrpm.cfg /etc/xymon/graphs.d/fanrpm.cfg
+ln -sf $BASE/graphs.d/linux-iostat.cfg /etc/xymon/graphs.d/linux-iostat.cfg
 
