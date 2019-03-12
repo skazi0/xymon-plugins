@@ -6,7 +6,7 @@ ln -sf $BASE/server/ext/pfsense.sh /usr/lib/xymon/server/ext/pfsense.sh
 ln -sf $BASE/server/ext/pfsense.pl /usr/lib/xymon/server/ext/pfsense.pl
 ln -sf $BASE/server/ext/ipmi_trends /usr/lib/xymon/server/ext/ipmi_trends
 ln -sf $BASE/server/ext/starttls.sh /usr/lib/xymon/server/ext/starttls.sh
-ln -sf $BASE/server/ext/hpprinter.sh /usr/lib/xymon/server/ext/hpprinter.sh
+ln -sf $BASE/server/ext/hpprinter /usr/lib/xymon/server/ext/hpprinter
 ln -sf $BASE/server/ext/snmp-ifstat.sh /usr/lib/xymon/server/ext/snmp-ifstat.sh
 ln -sf $BASE/server/ext/snmp-ifstat.pl /usr/lib/xymon/server/ext/snmp-ifstat.pl
 ln -sf $BASE/server/ext/zyxel-snmp.py /usr/lib/xymon/server/ext/zyxel-snmp.py
