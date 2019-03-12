@@ -31,7 +31,7 @@ ln -sf $BASE/clientlaunch.d/linux-iostat.cfg /etc/xymon/clientlaunch.d/linux-ios
 ln -sf $BASE/xymonserver.d/apc.cfg /etc/xymon/xymonserver.d/apc.cfg
 ln -sf $BASE/xymonserver.d/smart.cfg /etc/xymon/xymonserver.d/smart.cfg
 ln -sf $BASE/xymonserver.d/ipmi.cfg /etc/xymon/xymonserver.d/ipmi.cfg
-ln -sf $BASE/xymonserver.d/printer.cfg /etc/xymon/xymonserver.d/printer.cfg
+ln -sf $BASE/xymonserver.d/hpprinter.cfg /etc/xymon/xymonserver.d/hpprinter.cfg
 ln -sf $BASE/xymonserver.d/mysql.cfg /etc/xymon/xymonserver.d/mysql.cfg
 ln -sf $BASE/xymonserver.d/temp_multigraph.cfg /etc/xymon/xymonserver.d/temp_multigraph.cfg
 ln -sf $BASE/xymonserver.d/linux-iostat.cfg /etc/xymon/xymonserver.d/linux-iostat.cfg
@@ -41,7 +41,7 @@ ln -sf $BASE/graphs.d/cpu.cfg /etc/xymon/graphs.d/cpu.cfg
 ln -sf $BASE/graphs.d/memory.cfg /etc/xymon/graphs.d/memory.cfg
 ln -sf $BASE/graphs.d/smart.cfg /etc/xymon/graphs.d/smart.cfg
 ln -sf $BASE/graphs.d/ipmi.cfg /etc/xymon/graphs.d/ipmi.cfg
-ln -sf $BASE/graphs.d/printer.cfg /etc/xymon/graphs.d/printer.cfg
+ln -sf $BASE/graphs.d/hpprinter.cfg /etc/xymon/graphs.d/hpprinter.cfg
 ln -sf $BASE/graphs.d/mysql.cfg /etc/xymon/graphs.d/mysql.cfg
 ln -sf $BASE/graphs.d/voltage.cfg /etc/xymon/graphs.d/voltage.cfg
 ln -sf $BASE/graphs.d/fanrpm.cfg /etc/xymon/graphs.d/fanrpm.cfg
