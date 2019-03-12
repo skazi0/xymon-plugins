@@ -86,11 +86,11 @@ sub snmp_get_multi
     return $out;
 }
 
-my @hosts = `xymongrep --noextras "snmp-ifstat"`.split(/\n/);
+my @hosts = split(/\n/, `xymongrep --noextras "snmp-ifstat"`);
 for my $line (@hosts)
 {
-    my @parts = $line.split(/s+/);
-    my $ip = $parts[0];
-    my $host = $parts[1];
+    my @parts = split(/\s+/, $line);
+    my $ip = shift @parts;
+    my $host = shift @parts;
     snmp_ifstat($ip, $host);
 }
