@@ -140,37 +140,6 @@ if (time() - $mtime > $HDDCACHETIME * 60)
 }
 
 $bb->print("-----------------------------------\n");
-@output = `readsensors 2>&1`; # skz: don't die here as not everyone has readsensors available
-foreach my $line (@output) 
-{
-    next if ($line !~ /^([^:]*):\s*[+]?([\d.]+)/i);
-    my ($name, $valC) = ($1, $2);
-    $name = "X.$name";
-
-    my $status = 'blue';
-    my $comment = '';
-
-    if (defined $thresh{$name})
-    {
-        $comment = '(yellow: '.$thresh{$name}->[0].' red:'.$thresh{$name}->[1].')';
-        if ($valC > $thresh{$name}->[1])
-        {
-            $status = 'red';
-        }
-        elsif ($valC > $thresh{$name}->[0])
-        {
-            $status = 'yellow';
-        }
-        else
-        {
-            $status = 'green';
-        }
-    }
-
-    &color_line($bb, $status, "$name\t".&format_temp($valC)."\t".&format_temp(&C2F($valC))."\t$comment\n");
-}
-
-$bb->print("-----------------------------------\n");
 
 #$bb->print("Status $global_status: All devices look okay\n");
 
