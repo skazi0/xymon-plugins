@@ -19,6 +19,15 @@ my $CACHEFILE = "$ENV{'XYMONTMP'}/$ENV{'MACHINEDOTS'}.smart.cache";
 
 &load_config("$ENV{'XYMONTMP'}/logfetch.$ENV{'MACHINEDOTS'}.cfg");
 
+# fallback to disk detection if nothing defined in the config
+unless (@disks) {
+    opendir(DIR, '/dev') or die $!;
+    while (my $dev = readdir(DIR)) {
+        push(@disks, "/dev/$dev") if ($dev =~ /^[vs]d.*\D$/);
+    }
+    closedir(DIR);
+}
+
 my @stat = stat($CACHEFILE);
 my $mtime = scalar @stat ? $stat[9] : 0;
 # regenerate sensors cache if outdated
