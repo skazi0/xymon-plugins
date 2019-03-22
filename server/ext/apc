@@ -18,4 +18,13 @@ $XYMONHOME/bin/xymongrep --noextras "apc" | while read ip host hash line; do
       echo
       echo "$output"
     ) | $XYMON $XYMSRV @
+
+    # extract temperature info if available and send to trends
+    temp=$(echo "$output" | grep ITEMP | awk '{print $3}')
+    if test -n "$temp"; then
+      ( echo "data $host.trends"
+        echo "[temp,internal.rrd]"
+        echo "DS:temp:GAUGE:600:U:U $temp"
+      ) | $XYMON $XYMSRV @
+    fi
 done
