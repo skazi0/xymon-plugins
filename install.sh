@@ -1,7 +1,7 @@
 #!/bin/sh
 BASE=$(dirname $(readlink -f $0))
 ln -sf $BASE/server/ext/Hobbit.py /usr/lib/xymon/server/ext/Hobbit.py
-ln -sf $BASE/server/ext/apc.sh /usr/lib/xymon/server/ext/apc.sh
+ln -sf $BASE/server/ext/apc /usr/lib/xymon/server/ext/apc
 ln -sf $BASE/server/ext/pfsense.sh /usr/lib/xymon/server/ext/pfsense.sh
 ln -sf $BASE/server/ext/pfsense.pl /usr/lib/xymon/server/ext/pfsense.pl
 ln -sf $BASE/server/ext/ipmi_trends /usr/lib/xymon/server/ext/ipmi_trends
