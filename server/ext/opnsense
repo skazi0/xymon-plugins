@@ -5,7 +5,7 @@ import os
 import logging
 import subprocess
 import requests
-from BeautifulSoup import BeautifulSoup
+from bs4 import BeautifulSoup
 import Hobbit
 from xymon_utils import cache as xymon_cache
 
@@ -38,7 +38,7 @@ def web_auth(wapi, host, username, password):
     if r.status_code != 200:
         return False
 
-    soup = BeautifulSoup(r.text)
+    soup = BeautifulSoup(r.text, 'lxml')
 
     token=soup.find('input', type='hidden')
 
