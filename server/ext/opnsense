@@ -122,7 +122,7 @@ def monitor_firewall(ip, host):
     client.lineprint(wdata['system']['date_frmt'])
 
     trends.lineprint("[la.rrd]")
-    trends.lineprint("DS:la:GAUGE:600:U:U %g" % float(wdata['system']['cpu']['load'][1]))
+    trends.lineprint("DS:la:GAUGE:600:U:U %g" % (100. * float(wdata['system']['cpu']['load'][1])))
 
     trends.lineprint("[vmstat.rrd]")
     trends.lineprint("DS:cpu_sys:GAUGE:600:0:U %g" % float(wdata['system']['cpu']['sys']))
