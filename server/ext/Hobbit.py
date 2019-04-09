@@ -81,7 +81,7 @@ class Hobbit:
                                    )
             proc.communicate(report)
         else:
-            print report
+            print(report)
 
     def moan(self,signal,frame):
         import time,sys
