@@ -43,6 +43,8 @@ def check_updates(host, api):
 
     bb.lineprint(fwstatus['status_msg'])
 
+    bb.lineprint("Last check: %s" % fwstatus['last_check'])
+
     bb.send()
 
 def monitor_firewall(ip, host):
