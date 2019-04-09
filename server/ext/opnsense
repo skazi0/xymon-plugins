@@ -144,12 +144,12 @@ def monitor_firewall(ip, host):
     trends.lineprint("[states.rrd]")
     trends.lineprint("DS:used:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['pf']['states']))
     trends.lineprint("DS:max:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['pf']['maxstates']))
-    trends.lineprint("DS:usedpct:GAUGE:600:U:U %d" % percent_used(wdata['system']['kernel']['pf'], 'states', 'maxstates'))
+    trends.lineprint("DS:usedpct:GAUGE:600:U:U %g" % percent_used(wdata['system']['kernel']['pf'], 'states', 'maxstates'))
 
     trends.lineprint("[mbuf.rrd]")
     trends.lineprint("DS:used:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['mbuf']['total']))
     trends.lineprint("DS:max:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['mbuf']['max']))
-    trends.lineprint("DS:usedpct:GAUGE:600:U:U %d" % percent_used(wdata['system']['kernel']['mbuf'], 'total', 'max'))
+    trends.lineprint("DS:usedpct:GAUGE:600:U:U %g" % percent_used(wdata['system']['kernel']['mbuf'], 'total', 'max'))
 
     for disk in wdata['system']['disk']['devices']:
         name = disk['mountpoint'][1:] or 'root'
