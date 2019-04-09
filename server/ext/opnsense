@@ -5,6 +5,7 @@ import os
 import subprocess
 import requests
 import Hobbit
+from xymon_utils import cache as xymon_cache
 
 username = 'status'
 passwordfile = os.path.join(os.environ.get('XYMONHOME', '/usr/lib/xymon/server'), 'etc', 'opnsensepasswd')
@@ -17,21 +18,24 @@ def get_password(host, username, passfile):
                 return parts[2:5]
     return ()
 
-def monitor_firewall(ip, host):
-    (password, key, secret) = get_password(host, username, passwordfile)
-
-    api = requests.session()
-    api.auth = (key, secret)
-
+@xymon_cache('fwstatus', 3600)
+def firmware_status(host, api):
     r = api.get('https://%s/api/core/firmware/status' % host)
+    if r.status_code != 200:
+        return None
+
+    return r.json()
+
+def check_updates(host, api):
+
+    fwstatus = firmware_status(host, api)
 
     bb = Hobbit.Hobbit(test='opn', hostname=host)
-    if r.status_code != 200:
+    if fwstatus is None:
         bb.color_line('red', 'Error reading firmware status (code: %d)' % r.status_code)
         bb.send()
         return
 
-    fwstatus = r.json()
     if 'There are no updates available' in fwstatus['status_msg']:
         bb.add_color('green')
     else:
@@ -40,6 +44,14 @@ def monitor_firewall(ip, host):
     bb.lineprint(fwstatus['status_msg'])
 
     bb.send()
+
+def monitor_firewall(ip, host):
+    (password, key, secret) = get_password(host, username, passwordfile)
+
+    api = requests.session()
+    api.auth = (key, secret)
+
+    check_updates(host, api)
 
 hosts = subprocess.Popen('xymongrep --noextras opnsense', shell=True, stdout=subprocess.PIPE)
 for line in hosts.stdout:
