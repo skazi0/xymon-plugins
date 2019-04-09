@@ -9,6 +9,7 @@ ln -sf $BASE/server/ext/starttls /usr/lib/xymon/server/ext/starttls
 ln -sf $BASE/server/ext/hpprinter /usr/lib/xymon/server/ext/hpprinter
 ln -sf $BASE/server/ext/snmp-ifstat /usr/lib/xymon/server/ext/snmp-ifstat
 ln -sf $BASE/server/ext/zyxel-snmp /usr/lib/xymon/server/ext/zyxel-snmp
+ln -sf $BASE/server/ext/opnsense /usr/lib/xymon/server/ext/opnsense
 
 ln -sf $BASE/client/ext/mdstat-ext /usr/lib/xymon/client/ext/mdstat-ext
 ln -sf $BASE/client/ext/sensors /usr/lib/xymon/client/ext/sensors
@@ -22,6 +23,7 @@ ln -sf $BASE/tasks.d/starttls.cfg /etc/xymon/tasks.d/starttls.cfg
 ln -sf $BASE/tasks.d/hpprinter.cfg /etc/xymon/tasks.d/hpprinter.cfg
 ln -sf $BASE/tasks.d/snmp-ifstat.cfg /etc/xymon/tasks.d/snmp-ifstat.cfg
 ln -sf $BASE/tasks.d/zyxel-snmp.cfg /etc/xymon/tasks.d/zyxel-snmp.cfg
+ln -sf $BASE/tasks.d/opnsense.cfg /etc/xymon/tasks.d/opnsense.cfg
 
 ln -sf $BASE/clientlaunch.d/mdstat-ext.cfg /etc/xymon/clientlaunch.d/mdstat-ext.cfg
 ln -sf $BASE/clientlaunch.d/sensors.cfg /etc/xymon/clientlaunch.d/sensors.cfg
