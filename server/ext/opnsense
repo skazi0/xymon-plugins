@@ -90,7 +90,7 @@ def size_to_bytes(value):
         return value * 1024 * 1024 * 1024
     if unit == 'M':
         return value * 1024 * 1024
-    if unit == 'k':
+    if unit == 'K':
         return value * 1024
 
 def monitor_firewall(ip, host):
