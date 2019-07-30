@@ -1,0 +1,181 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# To enable unifi-snmp tests, add the "unifi-snmp" tag to hosts.cfg. place password in snmppasswd file in $XYMONHOME directory
+import os
+import subprocess
+import Hobbit
+import netsnmp
+from collections import defaultdict
+from pprint import pprint
+
+username = 'status'
+passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'snmppasswd')
+
+def get_password(host, username, passfile):
+    with open(passfile) as f:
+        for line in f.read().splitlines():
+            parts = line.split(':')
+            if parts[0:2] == [host, username]:
+                return parts[2]
+    return ''
+
+def fetch_snmp_values(ip, host, username, password, queries):
+    out = []
+    for query in queries:
+        oid = netsnmp.VarList(netsnmp.Varbind(query))
+        netsnmp.snmpwalk(oid, DestHost=ip, Version=3,
+            SecName=username, SecLevel='authPriv',
+            AuthProto='SHA', AuthPass=password,
+            PrivProto='AES', PrivPass=password)
+        out += oid
+    return out
+
+def extract_snmp_values(values, prefix, key):
+    types = {
+        'OCTETSTR': str,
+        'INTEGER': int,
+        'INTEGER32': int,
+        'COUNTER': int,
+    }
+    iret = defaultdict(dict)
+    used_vbs = []
+    for vb in values:
+        if not vb.tag.startswith(prefix):
+            continue
+        used_vbs.append(vb)
+
+        prop = vb.tag.replace(prefix, '')
+        prop = prop[0].lower() + prop[1:]
+        iret[vb.iid][prop] = types.get(vb.type, str)(vb.val)
+        if vb.tag == key:
+            iret[vb.iid]['__key__'] = iret[vb.iid][prop]
+    # remove used values
+    for vb in used_vbs:
+        values.remove(vb)
+    # return rekeyed
+    return { i['__key__']: i for i in iret.values() if '__key__' in i}
+
+def join_ifs(ifs, otherifs):
+    for i in ifs:
+        ifs[i].update(otherifs.get(i, {}))
+    for i in otherifs:
+        ifs[i].update(otherifs[i])
+
+def netstats(values, ip, host):
+    # http://cric.grenoble.cnrs.fr/Administrateurs/Outils/MIBS/?oid=1.3.6.1.2.1.2.2.1.8
+    statusmap = {
+        1: 'up',
+        2: 'down',
+        3: 'testing',
+        4: 'unknown',
+        5: 'dormant',
+        6: 'notPresent',
+        7: 'lowerLayerDown',
+    }
+
+    trends = Hobbit.trends(hostname=host)
+
+    # generic interface stats
+    ifs = extract_snmp_values(values, 'if', 'ifDescr')
+    unifiradios = extract_snmp_values(values, 'unifiRadio', 'unifiRadioName')
+    unifivaps = extract_snmp_values(values, 'unifiVap', 'unifiVapName')
+    unifiifs = extract_snmp_values(values, 'unifiIf', 'unifiIfName')
+
+    # join ifstats for different subtrees
+    join_ifs(ifs, unifiradios)
+    join_ifs(ifs, unifivaps)
+    join_ifs(ifs, unifiifs)
+
+    for iface, data in ifs.iteritems():
+        trends.lineprint("[ifstat,%s.rrd]" % iface)
+        trends.lineprint("DS:bytesReceived:DERIVE:600:0:U %d" % data['inOctets'])
+        trends.lineprint("DS:bytesSent:DERIVE:600:0:U %d" % data['outOctets'])
+
+    # radio stats
+    for iface, data in ifs.iteritems():
+        if 'radio' not in data:
+            continue
+        name = '%s-%s' % (data.get('essId', data.get('name')).lower(), data['radio'])
+        trends.lineprint("[unifi,%s.rrd]" % name)
+        # cu* = Channel Utilisation
+        # otherBss ~ neighbor networks?
+        # ccq = Client Connection Quality (missing?)
+        for g in ['numStations', 'txPower', 'channel', 'extChannel', 'ccq', 'otherBss', 'cuSelfRx', 'cuSelfTx', 'cuTotal']:
+            if g in data:
+                trends.lineprint("DS:%s:GAUGE:600:U:U %f" % (g, data[g]))
+
+        for d in ['rxCrypts', 'rxDropped', 'rxErrors', 'rxFrags', 'rxPackets', 'txDropped', 'txErrors', 'txPackets', 'txRetries',
+            'outUcastPkts', 'outNUcastPkts', 'outErrors', 'outDiscards', 'inUcastPkts', 'inNUcastPkts', 'inErrors', 'inDiscards']:
+            if d in data:
+                trends.lineprint("DS:%s:DERIVE:600:U:U %f" % (d, data[d]))
+
+    trends.send()
+
+def monitor_accesspoint(ip, host):
+    password = get_password(host, username, passwordfile)
+
+    values = fetch_snmp_values(ip, host, username, password, [
+        'RFC1213-MIB::sysUpTime',
+        'UBNT-UniFi-MIB::unifiApSystemModel',
+        'UBNT-UniFi-MIB::unifiApSystemVersion',
+
+        'FROGFOOT-RESOURCES-MIB::memTotal',
+        'FROGFOOT-RESOURCES-MIB::memFree',
+        'FROGFOOT-RESOURCES-MIB::memBuffer',
+        'FROGFOOT-RESOURCES-MIB::memCache',
+
+        'FROGFOOT-RESOURCES-MIB::loadTable', #'FROGFOOT-RESOURCES-MIB::loadDescr',
+
+        'IF-MIB::ifTable', #'IF-MIB::ifDescr',
+
+        'UBNT-UniFi-MIB::unifiRadioTable', #'UBNT-UniFi-MIB::unifiRadioName', 'UBNT-UniFi-MIB::unifiRadioRadio',
+
+        'UBNT-UniFi-MIB::unifiVapTable', #'UBNT-UniFi-MIB::unifiVapName', 'UBNT-UniFi-MIB::unifiVapRadio',
+
+        'UBNT-UniFi-MIB::unifiIfTable', #'UBNT-UniFi-MIB::unifiIfName',
+    ])
+
+    bb = Hobbit.Hobbit(test='unifi', hostname=host)
+    trends = Hobbit.trends(hostname=host)
+
+    if not values:
+        bb.color_line('red', 'Error reading SNMP values from device.')
+        bb.send()
+        return
+
+    # this call removes network specific stats from `values`
+    netstats(values, ip, host)
+
+    client = Hobbit.Hobbit(test='linux', type='client', hostname=host.replace('.', ','));
+
+    loads = extract_snmp_values(values, 'load', 'loadDescr')
+
+    # rest of values are scalars, transform these to simple dict
+    values = { v.tag: v.val for v in values }
+
+#sysUpTimeInstance TICKS 1375759 (/100 = seconds)
+
+    client.lineprint('[osversion]')
+    client.lineprint(values['unifiApSystemModel'])
+    client.lineprint(values['unifiApSystemVersion'])
+
+    trends.lineprint("[la.rrd]")
+    trends.lineprint("DS:la:GAUGE:600:U:U %g" % (100. * float(loads['5 Minute Average']['value'])))
+
+    memused = 100. * (float(values['memTotal']) - float(values['memFree'])) / float(values['memTotal'])
+    memcachebuff = 100. * (float(values['memBuffer']) + float(values['memCache'])) / float(values['memTotal'])
+    trends.lineprint("[memory.actual.rrd]")
+    trends.lineprint("DS:realmempct:GAUGE:600:0:U %g" % (memused - memcachebuff))
+    trends.lineprint("[memory.real.rrd]")
+    trends.lineprint("DS:realmempct:GAUGE:600:0:U %g" % memused)
+    trends.lineprint("[memory.swap.rrd]")
+    trends.lineprint("DS:realmempct:GAUGE:600:0:U U")
+
+    client.send()
+    trends.send()
+
+
+hosts = subprocess.Popen('xymongrep --noextras unifi-snmp', shell=True, stdout=subprocess.PIPE)
+for line in hosts.stdout:
+    ip, host = line.split(' ')[:2]
+    monitor_accesspoint(ip, host)
