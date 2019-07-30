@@ -160,7 +160,7 @@ def monitor_accesspoint(ip, host):
     client.lineprint(values['unifiApSystemVersion'])
 
     trends.lineprint("[la.rrd]")
-    trends.lineprint("DS:la:GAUGE:600:U:U %g" % (100. * float(loads['5 Minute Average']['value'])))
+    trends.lineprint("DS:la:GAUGE:600:U:U %g" % float(loads['5 Minute Average']['value']))
 
     memused = 100. * (float(values['memTotal']) - float(values['memFree'])) / float(values['memTotal'])
     memcachebuff = 100. * (float(values['memBuffer']) + float(values['memCache'])) / float(values['memTotal'])
