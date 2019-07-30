@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# To enable zyxel-snmp tests, add the "zyxel-snmp" tag to hosts.cfg. place password in switchpasswd file in $XYMONHOME directory
+# To enable zyxel-snmp tests, add the "zyxel-snmp" tag to hosts.cfg. place password in snmppasswd file in $XYMONHOME directory
 import os
 import subprocess
 import Hobbit
@@ -8,7 +8,7 @@ import netsnmp
 from collections import defaultdict
 
 username = 'status'
-passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'switchpasswd')
+passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'snmppasswd')
 
 def get_password(host, username, passfile):
     with open(passfile) as f:
