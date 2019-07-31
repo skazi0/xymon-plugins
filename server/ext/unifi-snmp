@@ -102,12 +102,12 @@ def netstats(values, ip, host):
         # ccq = Client Connection Quality (missing?)
         for g in ['numStations', 'txPower', 'channel', 'extChannel', 'ccq', 'otherBss', 'cuSelfRx', 'cuSelfTx', 'cuTotal']:
             if g in data:
-                trends.lineprint("DS:%s:GAUGE:600:U:U %f" % (g, data[g]))
+                trends.lineprint("DS:%s:GAUGE:600:U:U %d" % (g, data[g]))
 
         for d in ['rxCrypts', 'rxDropped', 'rxErrors', 'rxFrags', 'rxPackets', 'txDropped', 'txErrors', 'txPackets', 'txRetries',
             'outUcastPkts', 'outNUcastPkts', 'outErrors', 'outDiscards', 'inUcastPkts', 'inNUcastPkts', 'inErrors', 'inDiscards']:
             if d in data:
-                trends.lineprint("DS:%s:DERIVE:600:U:U %f" % (d, data[d]))
+                trends.lineprint("DS:%s:DERIVE:600:U:U %d" % (d, data[d]))
 
     trends.send()
 
