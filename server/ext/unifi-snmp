@@ -107,7 +107,7 @@ def netstats(values, ip, host):
         for d in ['rxCrypts', 'rxDropped', 'rxErrors', 'rxFrags', 'rxPackets', 'txDropped', 'txErrors', 'txPackets', 'txRetries',
             'outUcastPkts', 'outNUcastPkts', 'outErrors', 'outDiscards', 'inUcastPkts', 'inNUcastPkts', 'inErrors', 'inDiscards']:
             if d in data:
-                trends.lineprint("DS:%s:DERIVE:600:U:U %d" % (d, data[d]))
+                trends.lineprint("DS:%s:DERIVE:600:0:U %d" % (d, data[d]))
 
     trends.send()
 
