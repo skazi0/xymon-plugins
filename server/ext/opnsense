@@ -136,7 +136,7 @@ def monitor_firewall(ip, host):
     trends.lineprint("[memory.real.rrd]")
     trends.lineprint("DS:realmempct:GAUGE:600:0:U U")
     trends.lineprint("[memory.swap.rrd]")
-    if wdata['system']['disk']['swap']['total'] != '':
+    if wdata['system']['disk']['swap']:
         trends.lineprint("DS:realmempct:GAUGE:600:0:U %g" % percent_used(wdata['system']['disk']['swap']))
     else:
         trends.lineprint("DS:realmempct:GAUGE:600:0:U U")
