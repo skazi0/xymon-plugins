@@ -1,0 +1,22 @@
+#!/usr/bin/perl
+# $Id: $
+# Author: Jacek Tomasiak <jacek.tomasiak@gmail.com>
+use strict;
+# add script's directory to module search path for Hobbit.pm on non-debian systems
+use FindBin;
+use lib $FindBin::Bin;
+
+use Hobbit;
+use LWP::Simple;
+
+my $bb = new Hobbit('nginx');
+
+my $status = get('http://localhost/server-status');
+$bb->add_color('green');
+
+# make status output NCV friendly
+$status =~ s/(ing:\s*\d+\s*)/\1\n/g;
+
+$bb->print($status);
+
+$bb->send;
