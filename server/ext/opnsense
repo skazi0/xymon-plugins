@@ -157,7 +157,7 @@ def monitor_firewall(ip, host):
         used = size_to_bytes(disk['used'])
         trends.lineprint("[disk,%s.rrd]" % name)
         trends.lineprint("DS:pct:GAUGE:600:0:100 %g" % (100. * used / size))
-        trends.lineprint("DS:used:GAUGE:600:0:U %g" % used)
+        trends.lineprint("DS:used:GAUGE:600:0:U %d" % used)
 
     for iface in wdata['interfaces']:
         trends.lineprint("[ifstat,%s.rrd]" % iface['name'])
