@@ -50,12 +50,12 @@ if (time() - $mtime > $CACHETIME * 60)
 
             if ($line =~ /.*overall-health.*:\s*(.*)/)
             {
-                my $lstatus = ($1 == 'PASSED') ? 'green' : 'red';
+                my $lstatus = ($1 eq 'PASSED') ? 'green' : 'red';
                 print OUT "&$lstatus $line";
             }
-            elsif ($line =~ /^\s*(\d+)\s+(\S+)\s+\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(.*)$/)
+            elsif ($line =~ /^\s*(\d+)\s+(\S+)\s+\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+\S+\s+\S+\s+(\S+)\s+(.*)$/)
             {
-                my ($aname, $value, $worst, $thresh, $raw) = ($2, $3, $4, $5, $6);
+                my ($aname, $value, $worst, $thresh, $failure, $raw) = ($2, $3, $4, $5, $6, $7);
                 my $lstatus = 'green';
                 if ($aname =~ /Current_Pending_Sector|Offline_Uncorrectable/ and int($raw) > 0)
                 {
@@ -64,6 +64,9 @@ if (time() - $mtime > $CACHETIME * 60)
                 elsif ($aname =~ /Power_On_Hours/)
                 {
                     $ponhours = $raw;
+                }
+                if ($failure =~ /FAIL/) {
+                    $lstatus = 'red';
                 }
 
                 print OUT "&$lstatus $line";
