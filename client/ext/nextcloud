@@ -1,0 +1,26 @@
+#!/usr/bin/perl
+# Author: Jacek Tomasiak <jacek.tomasiak@gmail.com>
+use strict;
+# add script's directory to module search path for Hobbit.pm on non-debian systems
+use FindBin;
+use lib $FindBin::Bin;
+
+use Hobbit;
+
+my $bb = new Hobbit('nextcloud');
+
+# check update status
+my @output = `sudo -u www-data php /var/www/nextcloud/occ update:check 2>&1` or die;
+foreach my $line (@output)
+{
+    if ($line =~ /\d+ updates? available/)
+    {
+        $bb->color_print('yellow', $line);
+    }
+    else
+    {
+        $bb->print($line);
+    }
+}
+
+$bb->send;

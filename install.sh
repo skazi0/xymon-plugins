@@ -17,6 +17,7 @@ ln -sf $BASE/client/ext/sensors /usr/lib/xymon/client/ext/sensors
 ln -sf $BASE/client/ext/mysql /usr/lib/xymon/client/ext/mysql
 ln -sf $BASE/client/ext/linux-iostat /usr/lib/xymon/client/ext/linux-iostat
 ln -sf $BASE/client/ext/nginx /usr/lib/xymon/client/ext/nginx
+ln -sf $BASE/client/ext/nextcloud /usr/lib/xymon/client/ext/nextcloud
 
 ln -sf $BASE/tasks.d/apc.cfg /etc/xymon/tasks.d/apc.cfg
 ln -sf $BASE/tasks.d/pfsense.cfg /etc/xymon/tasks.d/pfsense.cfg
@@ -33,6 +34,7 @@ ln -sf $BASE/clientlaunch.d/sensors.cfg /etc/xymon/clientlaunch.d/sensors.cfg
 ln -sf $BASE/clientlaunch.d/mysql.cfg /etc/xymon/clientlaunch.d/mysql.cfg
 ln -sf $BASE/clientlaunch.d/linux-iostat.cfg /etc/xymon/clientlaunch.d/linux-iostat.cfg
 ln -sf $BASE/clientlaunch.d/nginx.cfg /etc/xymon/clientlaunch.d/nginx.cfg
+ln -sf $BASE/clientlaunch.d/nextcloud.cfg /etc/xymon/clientlaunch.d/nextcloud.cfg
 
 ln -sf $BASE/xymonserver.d/apc.cfg /etc/xymon/xymonserver.d/apc.cfg
 ln -sf $BASE/xymonserver.d/smart.cfg /etc/xymon/xymonserver.d/smart.cfg
