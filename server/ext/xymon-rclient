@@ -1,0 +1,711 @@
+#!/bin/sh
+
+# xymon-rclient.sh
+#
+# Version 0.6.1, Jeremy Laidman, August 2012
+#
+# This script gets xymon client data over a remote connection, typically ssh
+# but could be anything that provides a shell prompt.
+#
+# It typically runs on a display server (but could be any host that
+# has a Xymon server or client installed.  It works by pushing the
+# xymonclient-<ostype>.sh script to the target server and running it,
+# getting the output, enhancing, and feeding it into the Xymon display
+# server using $XYMON.  It's designed to be run from within Xymon, but could
+# be run separately, as long as some XYM* environment variables are defined.
+#
+# This is a replacement for the "xymonclient.sh" script that normally
+# calls xymonclient-<osname>.sh on the local server.  It requires no
+# Xymon installation on the target server.
+#
+# Tested on a Linux display server, connecting to Solaris target servers.
+# Tested using bash as /bin/sh on the display server.
+
+# TODO:
+# - finish implementation of logfetch
+# - allow default settings in .default. hostname
+
+# Release History:
+# - v0.1 - Jeremy Laidman
+#          initial release
+# - v0.2 - Jeremy Laidman
+#          modified to work with hobbit
+# - v0.3 - Jeremy Laidman
+#          adjusted name of client OS script for hobbit
+# - v0.4 - Jeremy Laidman
+#          more debug info, including showing the whole script to be sent
+#          can specify IP address to connect to with %{I} or --ip
+#          can specify environment vars to set (can be a security risk)
+#          add TOP=$TOP to script, allowing env var to define
+#          command-line ostype overrides configured ostype
+#          can now specify os of script separately to os of client host
+# - v0.5 - Jeremy Laidman
+#          runs script in a subshell rather than trying to hack it
+#          debug shows error output
+#          match only RCLIENT: rather than RCLIENT<something>:
+#          more debug output for each of the various stages
+# - v0.6 - Jeremy Laidman
+#          keeps a copy of the logfetch configuration for each host
+#          on the display server, in preparation for implementing
+#          some rudimentary logfetch implementation
+# - v0.6.1 - Jeremy Laidman
+#          On Solaris Bourne shell, [ -e <filename> ] isn't supported
+#          so assuming a real file and using [ -f <filename> ] instead
+
+# Installation:
+#
+# 1. Copy the script to a useful location on your display server
+#    such as /usr/lib/xymon/server/ext/
+#
+# 2. Add a section into tasks.cfg (or create an include file in tasks.d
+#    containing the following (adjust as appropriate):
+#
+#        [xymon-rclient]
+#            ENVFILE $XYMONHOME/etc/xymonserver.cfg
+#            CMD /$XYMONHOME/ext/xymon-rclient.sh
+#            LOGFILE $XYMONSERVERLOGS/xymon-rclient.log
+#            INTERVAL 5m
+#
+#    You can add "-d 1" to the CMD to show debug output.
+#
+# 3. Add "RCLIENT" definitions to your hosts.cfg as appropriate, such as:
+#
+#        10.99.1.1 remserver1.example.com # testip noping dialup "RCLIENT:cmd(ssh -T otheruser@%{H}),ostype(sunos)"
+#        10.99.1.2 remserver2.example.com # testip noping dialup "RCLIENT:cmd(ssh -T user1@gateway ssh -T -l user1 %{I}),ostype(sunos)"
+#        10.99.1.3 remserver3.example.com # testip noping dialup "RCLIENT:cmd(rsh),ostype(linux)"
+#        10.99.1.4 remserver4.example.com # testip noping dialup "RCLIENT:cmd(ssh -T remserver4.local),ostype(linux)"
+#
+#    The %{H} will be substituted with the servername (remserver1.example.com.
+#    in the first example).  If the cmd() definition has no spaces, then the
+#    servername will be appended regardless.  There are no defaults for cmd()
+#    and ostype() - they must be defined.  If %{I} is found, it is replaced
+#    by the IP address in the first field of hosts.cfg (see second example).
+#
+#    The first example connects with ssh to a server and gets its data.
+#    The second connects to one server as a jump point to another server, and
+#      uses the IP address to connect.
+#    The third connects to a server using rsh.
+#    The fourth connects to a server by using a different hostname.
+#
+# 4. If using ssh, establish key authentication, add host keys, etc. 
+#    If using rsh, you're an idiot; nevertheless, setup your trust first.
+
+#---------------------------------------------------------------------------#
+
+# adjust if necessary
+REM_XYMONTMP=/tmp			# where the target server stores its temp files
+
+# these defaults can be overridden on command-line
+LOCALMODE="no"		# if "yes", uses xymond_client instead of xymon
+DEBUG=0			# if >0, enables debug levels
+DRYRUN=""		# if defined, does everything except send the update
+TIMEOUT=60		# how long we wait for command to complete
+
+#---------------------------------------------------------------------------#
+# functions
+die() { echo "`date`: $*">&2; exit 1; }
+warn() { echo "`date`: $*">&2; }
+
+do_usage() {
+	echo "$0 [options] [hostname ...]"
+	echo ""
+	echo "Connects to a remote server and gathers host data"
+	echo "for feeding into Xymon."
+	echo ""
+	echo "If hostname is not specified, connects to"
+	echo "all hosts in hosts.cfg with 'RCLIENT' defined"
+	echo ""
+	echo "Options:"
+	echo "  -e             : default client proxy command, if not defined in hosts.cfg"
+	echo "                   (eg -e 'ssh user1@server1 ssh -T user2@server2')"
+	echo "  -l             : local mode"
+	echo "  -o <ostype>    : define or override OS type (eg sunos, or linux)"
+	echo "  -s <scriptos>  : define or override OS script name (eg sunos, or linux)"
+	echo "  -m <hostmatch> : only on matching hosts or IPs"
+	echo "  -i <ip>        : use specified IP to connect"
+	echo "  -d <level>     : debug level"
+	echo "  -t <seconds>   : timeout (defaults to $TIMEOUT)"
+	echo "  -y             : dry-run"
+	echo "  -Y             : dry-run showing only script"
+	echo "  -h             : help (what you're reading now)"
+	echo "  -V             : display version information"
+	exit 0
+}
+
+VERSION="0.6";
+
+do_version() {
+	echo "$0 version $VERSION - Jeremy Laidman - http://tools.rebel-it.com.au/xymon-rclient"
+}
+
+send_setup_commands() {
+	# sets up the environment
+	echo "/bin/sh -"
+	# for some reason, sunos shell sometimes corrupts the
+	# start of the command line so we need to pad it here
+	echo "################################################################"	# 64 chars
+	echo "################################################################"	# 64 chars
+	echo "XYMONTMP=$1"
+	echo "MACHINEDOTS=$2"
+	# clean up any preamble
+	echo "echo"
+	echo "echo ---START---"
+}
+
+send_client_script() {
+	# run script in a subshell so we can add other commands
+	# after the script exits
+	# we also inject the env vars at the top of the script
+	# finally, we send an extra "exit" in case it's missing
+	[ "$2" ] || return
+	EN="$1"	# environment
+	SC="$2"	# script filename
+
+	# we wrap the script in "()" so that the exit at
+	# the end doesn't close our shell, and then the
+	# clock script commands that come later run in the
+	# same environment as the main client script
+	echo "("
+	echo "$EN"
+	cat "$SC"
+	echo ")"
+}
+
+send_clock_commands() {
+	# TODO: adjust epoch command (or its preference) based on OS
+	cat << -EOF-
+
+# clock commands
+# assumes our date is GNU date
+EPOCH=\`date +%s\`
+# assumes we have nawk
+[ "\$EPOCH" = "+%s" ] && EPOCH=\`nawk 'BEGIN{print srand()}' 2>/dev/null\`
+# assumes we have perl
+[ "\$EPOCH" ] && EPOCH=\`perl -e 'print time,"\n"' 2>/dev/null\`
+if [ "\$EPOCH" ]; then
+	echo
+	echo [clock]
+	echo epoch: \${EPOCH}.000000
+	echo local: `date    "+%Y-%m-%d %H:%M:%S %Z"`
+	echo local: `date -u "+%Y-%m-%d %H:%M:%S %Z"`
+fi
+
+-EOF-
+}
+
+send_finish_commands() {
+	echo "exit"
+}
+
+do_host() {
+	# connect to host with command and return results on stdout
+	HN="$1"
+	IP="$2"
+	OS="$3"
+	SC="$4"
+	TO="$5"
+	RSH_CMD="$6"
+	EN="$7"
+
+	# check if there's a space, requiring a hostname
+	if echo "$RSH_CMD" | grep " " >/dev/null; then
+		# substitute with hostname (if exists)
+		CMD=`echo "$RSH_CMD" | sed 's/%{H}/'$HN'/g;s/%{I}/'$IP'/g'`
+	else
+		# leave alone
+		CMD="$RSH_CMD $HN"
+	fi
+	[ 0$DEBUG -gt 0 ] && echo "Command: $CMD" >&2
+
+	# $XYMONTMP and $MACHINEDOTS need to be defined on the remote server before
+	# running the script (used for constructing tempfile name and location).
+	# Clock values are appended after running the script.
+
+	SCRIPTNAME=$XYMONSERVERROOT/client/bin/${XYMONCLIENT}-${SC}.sh
+	[ -f "$SCRIPTNAME" ] || die "No matching script for OS $OS: $SCRIPTNAME"
+
+	# we run the command pipeline in background and then wait for timeout period
+	DUMPERR="2>/dev/null"
+	[ 0$DEBUG -gt 4 ] && DUMPERR=""
+	(
+		send_setup_commands "$REM_XYMONTMP" "$HN"
+		send_client_script "$EN" "$SCRIPTNAME"
+		echo "("
+		send_logfetch_commands $LOGFETCHCFG
+		echo ")"
+		send_clock_commands
+		send_finish_commands
+	) | eval $CMD $DUMPERR | sed '1,/---START---/d;$a[endmarker]\ndummy entry' &
+	PROCPID=$!
+	[ "$PROCPID" ] || die "Failed to fork command $CMD"
+
+	TIMER=0
+	while kill -0 $PROCPID 2>/dev/null && [ $TIMER -lt $TO ]; do
+		TIMER=`expr $TIMER + 1`
+		[ 0$DEBUG -gt 1 ] && echo "tick $TIMER/$TO" >&2
+		sleep 1
+	done
+
+
+	if kill -0 $PROCPID 2>/dev/null; then
+		[ 0$DEBUG -gt 1 ] && echo "command timed out after $TIMER seconds" >&2 ||
+		warn "Process $PROCPID timed out after $TO seconds: $CMD"
+		[ 0$DEBUG -gt 2 ] && ps -fp $PROCPID >&2
+		kill -15 $PROCPID 2>/dev/null
+		sleep 1
+		kill -0 $PROCPID 2>/dev/null && kill -9 $PROCPID
+	else
+		[ 0$DEBUG -gt 1 ] && echo "command completed after $TIMER seconds" >&2
+	fi
+}
+
+parse_hosts() {
+	TMPFILE="$1"
+	# get hosts using xymongrep
+	# build hashes of hostname/ostype and hostname/cmd
+	# RCLIENT format is "RCLIENT:cmd(command),ostype(sunos)"
+	$XYMONHOME/bin/$XYMONGREP "RCLIENT:*" | sed 's/ *# */ /;s/ dialup//;s/ testip//' > $TMPFILE
+	while read IP HN RCLIENT; do
+		[ "$HOSTMATCH" = "" ] || echo "$HN" | egrep "$HOSTMATCH" >/dev/null ||
+			{ [ 0$DEBUG -gt 0 ] && echo "Skipping host $HN, doesn't match /$HOSTMATCH/"; continue; }
+		RCLIENT=`echo "$RCLIENT" | sed 's/^"//;s/"$//'`	 # strip off quotes
+		case $RCLIENT in RCLIENT:*);; *) die "RCLIENT malformed: $HN $RCLIENT";; esac
+		[ 0$DEBUG -gt 1 ] && echo RCLIENT is $RCLIENT
+
+		CMD=`echo "$RCLIENT" | grep "cmd(" | sed 's/^.*cmd(//;s/).*$//'`
+		[ 0$DEBUG -gt 1 ] && echo CMD is "$CMD"
+
+		OSTYPE=`echo "$RCLIENT" | grep "ostype(" | sed 's/^.*ostype(//;s/).*$//'`
+		[ 0$DEBUG -gt 1 ] && echo OSTYPE is $OSTYPE
+		if [ "$DEFOSTYPE" -a "$OSTYPE" ]; then
+			[ 0$DEBUG -gt 1 ] && echo "Overriding configured OS type $OSTYPE with $DEFOSTYPE"
+			OSTYPE=$DEFOSTYPE
+		fi
+
+		SCRIPTOS=`echo "$RCLIENT" | grep "scriptos(" | sed 's/^.*scriptos(//;s/).*$//'`
+		if [ "$DEFSCRIPTOS" ]; then
+			[ "$SCRIPTOS" -a 0$DEBUG -gt 1 ] && echo "Overriding configured script OS $SCRIPTOS with $DEFSCRIPTOS"
+			SCRIPTOS=$DEFSCRIPTOS
+		fi
+		[ "$SCRIPTOS" ] || SCRIPTOS=$OSTYPE
+		[ 0$DEBUG -gt 1 ] && echo SCRIPTOS is $SCRIPTOS
+
+		TMOUT=`echo "$RCLIENT" | grep "timeout(" | sed 's/^.*timeout(//;s/).*$//'`
+		EN=`echo "$RCLIENT" | grep "env(" | sed 's/^.*env(//;s/).*$//'`
+		[ 0$DEBUG -gt 1 ] && echo TMOUT is $TMOUT
+
+		eval RCLIENT_HN_$COUNTER="$HN"
+		eval RCLIENT_CMD_$COUNTER=\'"$CMD"\'
+		eval RCLIENT_OS_$COUNTER="$OSTYPE"
+		eval RCLIENT_TO_$COUNTER="$TMOUT"
+		eval RCLIENT_IP_$COUNTER=\'"$IP"\'
+		eval RCLIENT_EN_$COUNTER=\'"$EN"\'
+		eval RCLIENT_SC_$COUNTER=\'"$SCRIPTOS"\'
+		COUNTER=`expr $COUNTER + 1`
+	done < $TMPFILE
+}
+
+add_host() {
+	# populate hashes from command-line
+	CMD="$1"
+	OSTYPE="$2"
+	SCRIPTOS="$3"
+	TO="$4"
+	HN="$5"
+	HN="$6"
+	eval RCLIENT_HN_$COUNTER="$HN"
+	eval RCLIENT_CMD_$COUNTER=\'"$CMD"\'
+	eval RCLIENT_TO_$COUNTER=$TO
+	eval RCLIENT_OS_$COUNTER=$OSTYPE
+	eval RCLIENT_IP_$COUNTER=$IP
+	eval RCLIENT_EN_$COUNTER=$EN
+	eval RCLIENT_SC_$COUNTER=$SCRIPTOS
+}
+
+send_logfetch_file() {
+	FILENAME="$1"
+	[ "$FILENAME" ] || return
+
+	echo "if [ \"$FILENAME\" -a -f \"$FILENAME\" ]; then"
+
+	echo "  if [ -h \"$FILENAME\" ]; then echo \"type:120000 (symlink)\""
+	echo "elif [ -f \"$FILENAME\" ]; then echo \"type:100000 (file)\""
+	echo "elif [ -b \"$FILENAME\" ]; then echo \"type:060000 (block special)\""
+	echo "elif [ -c \"$FILENAME\" ]; then echo \"type:020000 (char special)\""
+	echo "elif [ -d \"$FILENAME\" ]; then echo \"type:040000 (directory)\""
+	echo "elif [ -S \"$FILENAME\" ]; then echo \"type:140000 (socket)\""
+	echo "elif [ -p \"$FILENAME\" ]; then echo \"type:010000 (fifo)\""
+	echo "fi"
+
+	# send a shell function to convert symbolic mode to numeric
+	echo 'mode_s2n() { M=""; P=0; MATCH=""; ADD=4; C=0; while [ $C -lt 9 ]; do case $1 in -${MATCH}-*) : ;; *) P=`expr $P + $ADD`; ;; esac; { ADD=`expr $ADD / 2`; MATCH="${MATCH}?"; C=`expr $C + 1`; } ; [ $ADD -le 0 ] && { M="$M$P"; ADD=4; P=0; } ; done; echo $M ; }'
+	echo "set - \"\"\`ls -l $FILENAME\`"
+	echo "F_MODE=\$1"
+	echo "F_LINKCOUNT=\$2"
+	echo "F_OWNER=\$3"
+	echo "F_GROUP=\$4"
+	echo "F_SIZE=\$5"
+
+	echo "echo \"mode:\`mode_s2n \$F_MODE\` (\$F_MODE)\""
+	echo "echo \"linkcount:\$F_LINKCOUNT\""
+
+	# file ownership
+	echo "F_OWNID=\`id \"\"\$F_OWNER | { read A; IFS=\"= ()\"; set - \"\"\$A; echo \"\$2 (\$3)\"; }\`"
+	echo "[ \"\$F_OWNID\" ] && echo \"owner:\$F_OWNID\" || echo \"owner:? (\$F_OWNER)\""
+
+	echo "F_GRPID=\`perl -e 'print scalar getgrnam(\"'\$F_GROUP'\"),\"\n\"' 2>/dev/null \`"
+	echo "[ \"\$F_GRPID\" ] || F_GRPID=\"?\""
+	echo "echo \"group:\$F_GRPID (\$F_GROUP)\""
+
+	# size
+	echo "echo \"size:\$F_SIZE\""
+
+	# file timestamps
+	echo "type perl >/dev/null 2>&1 && perl -e '@_=stat \"$FILENAME\"; print \"clock:\".time.\"\natime:\$_[8]\nctime:\$_[10]\nmtime:\$_[9]\n\"' 2>/dev/null"
+
+	echo "else echo"
+	echo "fi"
+}
+
+send_logfetch_dir() {
+	[ "$DU" ] || DU="du -k"
+	echo "$DU \"$1\""
+}
+
+send_logfetch_commands() {
+	# get file info according to logfetch configuration
+	# the config is stored server-side, and commands to
+	# fetch and report the info must be crafted here so
+	# they can be executed on the remote host
+
+	LOGFETCHCFG="$1"
+	[ -f $LOGFETCHCFG -a -s $LOGFETCHCFG ] || return
+
+	[ 0$DEBUG -gt 0 ] && echo "Doing logfetch using $LOGFETCHCFG" >&2
+
+	# In the config file, we are expecting things like these:
+	#
+	#  log:/path/to/file:maxsize
+	#    ignore MARK
+	#    trigger stuff
+	#  linecount:/path/to/file
+	#    label1:regex1
+	#    label2:regex2
+	#  file:/path/to/file
+	#  dir:/path/to/dir
+	#
+	# note: indenting is not required and should not be assumed
+	#
+	# We should output things like these:
+	#
+	# [logfile:/path/to/file]
+	# type:100000 (file)
+	# mode:640 (-rw-r-----)
+	# linkcount:1
+	# ...
+	#
+	# [msgs:/path/to/file]
+	# <...SKIPPED...>
+	# Aug 10 12:20:50 servername log message here
+	# ...
+	#
+	# [linecount:/path/to/file]
+	#    regex1: 99
+	#    regex2: 103
+	#
+	# [dir:/path/to/dir]
+	# 100  /path/to/dir/file1
+	# 52   /path/to/dir/file2
+	# 152  /path/to/dir
+	#
+	# Note: Due to the complexity in keeping state,
+	# only "file:" and "dir:" are implemented at this
+	# stage.  Neither can backticks be used yet (the
+	# result is unknown).  The "file:" setting cannot
+	# use the optional hash field yet.  Linecount does
+	# not require state, but simply hasn't yet been
+	# implemented.
+
+	SECTION=""
+	IGNORE_RE=""
+	TRIGGER_RE=""
+	while read LINE; do
+		case $LINE in
+			"")
+					SECTION=""
+					;;
+			log:*)
+					SECTION=log
+					# TODO: need to parse the trigger/ignore lines before output
+					FILENAME=`IFS=:; set - ""$LINE; shift; echo "$1"`
+					LOGMAX=`IFS=:; set - ""$LINE; shift; shift; echo "$1"`
+					[ "$LOGMAX" ] || LOGMAX=1024
+					#echo echo
+					#echo "echo [logfile:$FILENAME]"
+					#send_logfetch_file "$FILENAME"
+					#echo "echo \"### log monitoring not implemented in `basename $0` ###\""
+
+					echo echo
+					# TODO: implement "trigger", "ignore" and state
+					# we can handle backticks, but we
+					# cannot fully handle real log files cos
+					# we cannot keep state (yet)
+
+					# basic checks on backtick format
+					if echo "$FILENAME" | grep '`' >/dev/null; then
+						# using backticks, check that there are only two at start and end
+						if echo "$FILENAME" | grep '^`[^`]*`$' >/dev/null; then
+							# looks OK
+							echo "LFN=$FILENAME"	# executes the command, log filename into LFN
+							echo "if [ \"\$LFN\" ]; then"
+							echo "  echo [msgs:\$LFN]"
+							echo "  tail -${LOGMAX}c \$LFN"
+							echo "fi"
+						else
+							# looks bad
+							echo "echo \"### invalid backtick expression found for for [$MACHINEDOTS]: $LINE ###\""
+							continue
+						fi
+					else
+						echo "echo [msgs:$FILENAME]"
+						#echo "dd if=$FILENAME bs=$LOGMAX count=1 2>/dev/null"
+						echo "tail -${LOGMAX}c $FILENAME"
+					fi
+					;;
+			linecount:*)
+					SECTION=linecount
+					FILENAME=`IFS=:; set - ""$LINE; shift; echo "$1"`
+					echo echo
+					echo "echo [linecount:$FILENAME]"
+					# just the header, more comes later
+					;;
+			file:*)
+					SECTION=file
+					FILENAME=`IFS=:; set - ""$LINE; shift; echo "$1"`
+					echo echo
+					echo "echo [file:$FILENAME]"
+					send_logfetch_file "$FILENAME"
+					;;
+			dir:*)
+					SECTION=dir
+					# show directory usage
+					DIRNAME=`IFS=:; set - ""$LINE; shift; echo "$1"`
+					echo echo
+					echo "echo [dir:$DIRNAME]"
+					send_logfetch_dir "$DIRNAME"
+					;;
+			*)		
+					# Handle qualifier lines
+					if [ "$SECTION" = "linecount" ]; then
+						# TODO: validate line format, ignore if broken
+						[ "$FILENAME" ] || continue
+						# look for label:regex
+						IFSSAVE="$IFS"; IFS=:; set - ""$LINE; IFS="$IFSSAVE"
+						LABEL=$1; shift; RE="$@"
+						echo "LCOUNT=\`egrep -c '$RE' $FILENAME\`"
+						echo "printf \"\t$LABEL:\$LCOUNT\\n\""
+					fi
+					if [ "$SECTION" = "log" ]; then
+						# look for 'trigger' or 'ignore'
+						# note that we cannot use these because we have
+						# already sent the instructions for sending
+						# the log file, but maybe one day...
+						set - ""$LINE
+						LABEL=$1; shift; RE="$@"
+						if [ "$LABEL" = "ignore" ]; then
+							IGNORE_RE="$RE"
+						elif [ "$LABEL" = "trigger" ]; then
+							TRIGGER_RE="$RE"
+						fi
+					fi
+					;;
+		esac
+	done < $LOGFETCHCFG
+	echo ""
+}
+
+#---------------------------------------------------------------------------#
+
+[ "$1" ] || exec 2>&1	# send STDERR to STDOUT if being run from xymonlaunch
+
+# mainline
+while [ "$1" ]; do
+	case $1 in
+		-e)		shift; RSH_CMD="$1";;
+		-h|--h*)	do_usage; exit;;
+		-V|--version)	do_version; exit;;
+		-o|--os*)	shift; DEFOSTYPE="$1";;
+		-s|--script*)	shift; DEFSCRIPTOS="$1";;
+		-l|--local*)	LOCALMODE=yes;;
+		-d|--debug)	shift; DEBUG="$1";;
+		-y|--dryrun)	DRYRUN=yes;;
+		-Y|--showscript)	DRYRUN=yes; STOPAFTERSCRIPT=yes;;
+		-t|--timeout)	shift; TIMEOUT="$1";;
+		-i|--ip)	shift; IP="$1";;
+		-m|--match)	shift; HOSTMATCH="$1";;
+		-q|--quiet)	shift; QUIET=yes;;
+		--)		shift; break;;
+		-*)		die "Invalid option: $1"; exit;;
+		*)		break;
+	esac
+	shift
+done
+
+[ "$XYMON" -o "$BB" ] || die "XYMON environment not set"
+
+# xymon binaries
+XYMONDCLIENT="xymond_client"
+XYMONCLIENT="xymonclient"
+XYMONGREP="xymongrep"
+
+if [ "$XYMON" = "" ]; then
+	# must be hobbit, we'll emulate a xymon server using hobbit vars
+	XYMON="$BB"
+	XYMONHOME="$BBHOME"
+	XYMSRV="$BBDISP"
+	XYMONSERVERROOT="$BBSERVERROOT"
+	# hobbit binaries and filenames
+	XYMONDCLIENT="hobbitd_client"
+	XYMONCLIENT="hobbitclient"
+	XYMONGREP="bbhostgrep"
+fi
+
+[ "$QUIET" ] || echo "`date`: starting $0"
+[ "`test "$TIMEOUT" -gt 0 2>&1`" = "" ] || die "Invalid timeout specified"
+[ $TIMEOUT -gt 0 ] || die "Timeout must be a positive integer"
+
+[ "$1" -a "$RSH_CMD" = "" ] && die "No proxy command specified, argv: $0 $@"
+if [ "$LOCALMODE" = "yes" ]; then
+	die "Local mode is not supported (yet)"
+	[ -x $XYMONHOME/bin/$XYMONDCLIENT ] || die "Unable to locate $XYMONHOME/bin/$XYMONDCLIENT"
+else
+	[ -x $XYMON ] || die "Unable to locate $XYMON"
+fi
+
+TMPFILE=`mktemp /tmp/xymon-client-remote-XXXXX`
+TMPFILE2=`mktemp /tmp/xymon-client-remote-XXXXX`
+trap "rm -f $TMPFILE $TMPFILE2" exit	# clean-up on exit
+
+[ 0$DEBUG -gt 0 ] && date
+
+COUNTER=1	# incremented by the following parse/add functions
+if [ "$1" ]; then
+	# it doesn't make a lot of sense hitting
+	# multiple hosts using the same proxy command 
+	# but we support it anyway
+	[ 0$DEBUG -gt 0 ] && echo "Adding hosts from CLI"
+	while [ "$1" ]; do
+		add_host "$RSH_CMD" "$DEFOSTYPE" "$DEFSCRIPTOS" "$TIMEOUT" "$1" "$IP"
+		COUNTER=`expr $COUNTER + 1`
+		shift
+	done
+else
+	[ 0$DEBUG -gt 0 ] && echo "Adding hosts from hosts.cfg"
+	parse_hosts $TMPFILE
+fi
+
+[ "$DRYRUN" -a 0$DEBUG -gt 0 ] && echo "Dry-run mode enabled"
+
+# Now we do the work
+
+INDEX=1
+OKCOUNT=0
+while [ $INDEX -le $COUNTER ]; do
+	eval MACHINEDOTS="\$RCLIENT_HN_${INDEX}"
+	[ "$MACHINEDOTS" ] || break
+
+	eval OSTYPE="\$RCLIENT_OS_${INDEX}"
+	[ "$OSTYPE" ] || die "Unable to get OS type for $MACHINEDOTS"
+
+	eval SCRIPTOS="\$RCLIENT_SC_${INDEX}"
+	[ "$SCRIPTOS" ] || die "Unable to get OS script name for $MACHINEDOTS"
+
+	eval CMD="\$RCLIENT_CMD_${INDEX}"
+	[ "$CMD" ] || die "Unable to get proxy for $MACHINEDOTS"
+
+	eval TO="\$RCLIENT_TO_${INDEX}"
+	[ "$TO" ] || TO=$TIMEOUT
+	[ "$TO" ] || die "Unable to get timeout for $MACHINEDOTS"
+
+	eval IP="\$RCLIENT_IP_${INDEX}"
+	[ "$IP" ] || IP="0.0.0.0"
+
+	eval EN="\$RCLIENT_EN_${INDEX}"
+
+	[ 0$DEBUG -gt 2 ] && echo "Host $MACHINEDOTS with IP=$IP using ostype=$OSTYPE, scriptos=$SCRIPTOS, timeout=$TO, cmd=$CMD, env=$EN" >&2
+
+	MACHINE=`echo "$MACHINEDOTS" | sed 's/\./,/g'`
+	CONFIGCLASS=$OSTYPE
+	LOGFETCHCFG=$XYMONTMP/logfetch.$MACHINEDOTS.cfg
+
+	[ 0$DEBUG -gt 0 ] && echo "Server $INDEX $MACHINEDOTS($OSTYPE)"
+
+	INDEX=`expr $INDEX + 1`
+
+ 	[ 0$DEBUG -gt 3 ] && echo "Sending client script $XYMONSERVERROOT/client/bin/${XYMONCLIENT}-${SCRIPTOS}.sh"
+	[ 0$DEBUG -gt 4 ] && echo "Setup commands:" && send_setup_commands "$REM_XYMONTMP" "$MACHINEDOTS" | sed 's/^/  /'
+ 	[ 0$DEBUG -gt 4 -o "$STOPAFTERSCRIPT" ] && echo "Client script:" && (
+		send_setup_commands
+		send_client_script "$EN" $XYMONSERVERROOT/client/bin/${XYMONCLIENT}-${SCRIPTOS}.sh
+		send_logfetch_commands $LOGFETCHCFG
+		send_clock_commands
+		send_finish_commands
+	) | sed 's/^/  /'
+
+	[ "$STOPAFTERSCRIPT" ] && continue	# next server
+
+	do_host $MACHINEDOTS $IP $OSTYPE $SCRIPTOS $TO "$CMD" "$EN" > $TMPFILE
+	[ -s $TMPFILE ] || {
+		warn "Failed to collect data for $MACHINEDOTS"
+		continue
+	}
+	[ 0$DEBUG -gt 1 ] && echo "Received `sed '/^\[endmarker\]$/,$d' $TMPFILE | grep -c ^` lines of client data"
+	[ 0$DEBUG -gt 3 ] && echo "Client data:" && sed 's/^/  /' $TMPFILE
+	grep "^\[endmarker\]$" $TMPFILE >/dev/null || {
+		warn "Failed to collect complete data for $MACHINEDOTS"
+		continue
+	}
+
+	OKCOUNT=`expr $OKCOUNT + 1`
+
+	if [ "$LOCALMODE" = "yes" ]; then
+		(
+			echo "@@client#1|0|127.0.0.1|$MACHINEDOTS|$SERVEROSTYPE"
+			echo "client $MACHINE.$OSTYPE $CONFIGCLASS"
+			cat $TMPFILE
+		) > $TMPFILE2
+		# this doesn't seem to work
+		if [ "$DRYRUN" = "" ]; then
+			$XYMONHOME/bin/$XYMONDCLIENT --local --config=$XYMONHOME/etc/localclient.cfg < $TMPFILE2
+		else
+			echo $XYMONHOME/bin/$XYMONDCLIENT --local --config=$XYMONHOME/etc/localclient.cfg \< $TMPFILE2
+		fi
+	else
+		(
+			echo "client $MACHINE.$OSTYPE $CONFIGCLASS"
+			cat $TMPFILE
+		) > $TMPFILE2
+		if [ "$DRYRUN" = "" ]; then
+			$XYMON $XYMSRV "@" < $TMPFILE2 >${LOGFETCHCFG}.tmp
+			[ 0$DEBUG -gt 0 ] && ls -l ${LOGFETCHCFG}.tmp
+			if [ -s ${LOGFETCHCFG}.tmp ]; then
+				mv ${LOGFETCHCFG}.tmp $LOGFETCHCFG
+				[ 0$DEBUG -gt 0 ] && ls -l ${LOGFETCHCFG}
+				if [ 0$DEBUG -gt 1 ]; then
+					echo "Logfetch configuration from server (for next time):"
+					sed 's/^/  /' < $LOGFETCHCFG
+				fi
+			else
+				rm -f $LOGFETCHCFG
+				[ 0$DEBUG -gt 0 ] && echo removed empty logfetch cfg file
+			fi
+		else
+			echo $XYMON $XYMSRV "@" \< $TMPFILE2
+			[ 0$DEBUG -eq 2 ] && { sed 's/^/  /' $TMPFILE2 | head; echo "  ..."; }
+			[ 0$DEBUG -gt 3 ] && sed 's/^/  /' $TMPFILE2
+		fi
+	fi
+done
+
+INDEX=`expr $INDEX - 1`
+[ "$QUIET" ] || echo "`date`: finished $0 (completed $OKCOUNT out of $INDEX)"

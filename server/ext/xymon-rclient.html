@@ -1,0 +1,145 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN">
+<HEAD>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" >
+<TITLE>xymon-rclient</TITLE>
+</HEAD>
+<BODY>
+<H2>xymon-rclient</H2>
+
+<H3>Introduction</H3>
+xymon-rclient is an extension for <a href="http://www.xymon.com/xymon/help/about.html">Xymon</a>
+that implements a remote client that
+requires no software to be installed on the remote system.  It was developed
+to allow execution via remote shell type packages such as rsh, rexec, rlogin
+and ssh.  For security reasons, only ssh is recommended.
+<P>
+This script provides a way to monitor servers that are not directly accessible by
+the Xymon display server, or when software cannot be installed or user accounts
+cannot be created.  As long as you have a way to run a shell on the remote server,
+you should be able to use xymon-rclient to monitor that server.
+
+<H3>Licence</H3>
+xymon-rclient is hererby released into the public domain.  Use it however you
+need.  It'd be nice if you let me know how well it works for you.
+<P>
+<B>Disclaimer</B>: xymon-rclient comes with no warranty.  You use this software
+at your own risk.  The software might not work as expected, or at all, and that
+would be your problem.  The software might cause other things to break.  If you
+decide to use it, then you are entirely responsible for anything that happens as
+a result.
+
+<H3>Limitations</H3>
+Because xymon-rclient it relies only on standard UNIX commands, it does not
+fully support the "logfetch" binary (normally provided with a Xymon client).  Thus
+log monitoring is only partially supported.  In particular, support for "file:" ignores
+"trigger" and "ignore" modifiers, checksumming, and also sends the whole file rather than just
+new lines since the last run.  Logfile monitoring support is very new, and care should
+be taken to ensure that it works as expected.
+
+<H3>Installation</H3>
+Download/view <a href="xymon-rclient.sh">v0.6.1</a> or <a href="changelog">changelog</a>, or <a href="xymon-rclient.sh-v0.6">v0.6</a> or <a href="xymon-rclient.sh-v0.5">v0.5</a> or <a href="xymon-rclient.sh-v0.4">v0.4</a> or <a href="xymon-rclient.sh-v0.3">v0.3</a> or <a href="xymon-rclient.sh-v0.2">v0.2</a> or <a href="xymon-rclient.sh-v0.1">v0.1</a>.
+<P>
+To install and use, follow the instructions in the comments at the
+start of the script.  In brief:
+<OL>
+<LI>setup non-interactive (eg key) authentication for target hosts
+<LI>copy script somewhere
+<LI>create a file in <tt>tasks.d/</tt> to launch, or add a section to <tt>tasks.cfg</tt>
+<LI>add <tt>RCLIENT</tt> definitions to <tt>hosts.cfg</tt>
+</OL>
+<P>
+Example <tt>hosts.cfg</tt> entries are shown here:
+<PRE>
+10.99.1.1 remserver1.example.com # testip noping dialup "RCLIENT:cmd(ssh -T otheruser@%{H}),ostype(sunos)"
+10.99.1.2 remserver2.example.com # testip noping dialup "RCLIENT:cmd(ssh -T user1@gateway ssh -T -l user1 %{I}),ostype(sunos)"
+10.99.1.3 remserver3.example.com # testip noping dialup "RCLIENT:cmd(rsh),ostype(linux),timeout(120)"
+10.99.1.4 remserver4.example.com # testip noping dialup "RCLIENT:cmd(ssh -T remserver4.local),ostype(linux),env(TOP=/usr/local/bin/top)"
+</PRE>
+<P>
+The format of the RCLIENT specification in <tt>hosts.cfg</tt> is something like this:
+<pre>
+RCLIENT:cmd(<cite>command-line</cite>),ostype(<cite>ostype</cite>)[,timeout(<cite>seconds</cite>)][,scriptos(<cite>ostype</cite>)][,env(<cite>var1=val1[ var2=val2 ...]</cite>)]
+</pre>
+<P>
+If spaces are used, the entire <tt>RCLIENT:...</tt> string must be enclosed
+in quotes.
+<P>
+The <tt>cmd()</tt> specifies a command-line to execute in order to
+get a shell on the remote system.
+The string <tt>%{H}</tt> is automatically replaced by the target hostname.
+If a <tt>cmd()</tt> definition has no spaces, then the hostname will be
+appended regardless (such as in the "rsh" example above).  The string
+<tt>%{I}</tt> is automatically replaced by the IP address in
+<cite>hosts.cfg</cite>.  There is no default <tt>cmd()</tt> - it must be
+specified.
+<P>
+The <tt>ostype()</tt> specifies the OS type, and must match one of the
+scripts in the client bin directory. For example, specifying
+<tt>ostype(<strong>irix</strong>)</tt> will match (and use) the script
+<tt>xymonclient-<strong>irix</strong>.sh</tt>.  There is no
+default <tt>ostype()</tt> - it must be specified.
+<P>
+The <tt>scriptos()</tt> specifies the OS type for the script to be sent.
+This defaults to the <tt>ostype()</tt> specification.  This is useful if you need
+to send a customised script, but the OS of the host matches an existing
+script.  Specify only the OS part, so for example, specifying <tt>ostype(sunos)</tt>
+and <tt>scriptos(sunos7)</tt> will report a "sunos" server in the client data but
+will run the script <tt>xymonclient-sunos7.sh</tt>.
+<P>
+The default <tt>timeout()</tt> setting is 60 seconds.
+<P>
+The <tt>env()</tt> setting is useful to specify environment variables
+to be given to the client script.  This is useful for defining <tt>TOP</tt>
+if it's not in the <tt>PATH</tt>.
+
+<H3>Troubleshooting</H3>
+Although designed to be run from <tt>tasks.cfg</tt> or <tt>tasks.d/*.cfg</tt>,
+you can run it directly from the command-line.  Give it <tt>-h</tt> for instructions.
+
+<H3>Multi-hop Connections</H3>
+Sometimes the target server is not even remotely contactable by hosts that
+the Xymon server can connect, and requires multiple connections to get to
+a shell prompt the the server to be monitored.  This can be overcome in most
+cases, depending on the connectivity.  Here are some examples that might work for you.
+<DL>
+  <DT>via proxy (requires netcat):</DT>
+    <DD><tt>xymon server -[proxy]-> web proxy server -[ssh]-> target server</tt></DD>
+    <DD>.ssh/config: <tt>ProxyCommand /usr/bin/nc -X connect -x proxyserver:8080 %h %p</tt></DD>
+<BR>
+  <DT>via another server with ssh, target private key on intermediate server:</DT>
+    <DD><tt>xymon server -[ssh]-> intermediate server -[ssh]-> target server</tt></DD>
+    <DD>.ssh/config: <tt>ProxyCommand ssh -i .ssh/authkey intermediateservername</tt></DD>
+<BR>
+  <DT>via another server with ssh, target private key on Xymon server (requires bash):</DT>
+    <DD><tt>xymon server ->[tunnel]->( -[ssh]-> intermediate server -[ssh]->)-[ssh]-> target server</tt></DD>
+    <DD>.ssh/config: <tt>ProxyCommand ssh -i .ssh/authkey intermediateservername 'exec 3<>/dev/tcp/%h/%p; cat <&3 & cat >&3; kill $!'</tt> (requires <tt>bash</tt>)</DD>
+</DL>
+
+<P>
+It's useful, and sometimes important to specify the following parameters to ssh connections, either in the cmd() command-line specification, or in the <tt>.ssh/config</tt> file:
+<LI><tt>-T</tt> = disable pseudo-terminal allocation
+<LI><tt>BatchMode=yes</tt> - prevent ssh from hanging if user input is required (eg key fails and password required)
+<LI><tt>-i ~xymon/.ssh/keyfile</tt> (or <tt>IdentityFile</tt>) - specify authentication key
+
+<H3>Other</H3>
+xymon-rclient has been used on a Linux display server to monitor Solaris and Linux nodes
+and has also been used in various embedded Linux systems.
+<P>
+Note that (FreeBSD based) FreeNAS appears to run a limited shell by default, which doesn't handle
+the client script it's given.  To work around this, add "/bin/bash" to the command like so:
+<tt>
+<DD>cmd(ssh -T -i /home/xymon/.ssh/xymon-rclient root@%{H} /bin/bash),ostype(freebsd)</DD>
+</tt>
+<P>
+Comments, submissions welcome: <a href="jlaidman+xymonrclient@rebel-it.com.au">jlaidman+xymonrclient@rebel-it.com.au</a>
+
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+var pageTracker = _gat._getTracker("UA-1312412-4");
+pageTracker._trackPageview();
+</script>
+
+</BODY>
