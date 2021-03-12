@@ -3,6 +3,7 @@
 # To enable opnsense tests, add the "opnsense" tag to hosts.cfg. place password in opnsensepasswd file in $XYMONHOME directory
 import os
 import logging
+import time
 import subprocess
 import requests
 from bs4 import BeautifulSoup
@@ -26,8 +27,22 @@ def get_password(host, username, passfile):
 
 @xymon_cache('fwstatus', 3600)
 def firmware_status(host, api):
+    # trigger check
+    r = api.post('https://%s/api/core/firmware/check' % host)
+    if not r.ok or r.json()['status'] != 'ok':
+        return None
+    # wait 30 x 1sec cycles for check to end
+    for wait in range(30):
+        time.sleep(1)
+        logger.debug("checking...")
+        r = api.get('https://%s/api/core/firmware/upgradestatus' % host)
+        if r.ok and r.json()['status'] == 'done':
+            break
+    if not r.ok or r.json()['status'] != 'done':
+        return None
+    # get final status
     r = api.get('https://%s/api/core/firmware/status' % host)
-    if r.status_code != 200:
+    if not r.ok:
         return None
 
     return r.json()
@@ -63,7 +78,7 @@ def check_updates(host, api):
 
     bb = Hobbit.Hobbit(test='opn', hostname=host)
     if fwstatus is None:
-        bb.color_line('red', 'Error reading firmware status (code: %d)' % r.status_code)
+        bb.color_line('red', 'Error reading firmware status')
         bb.send()
         return
 
