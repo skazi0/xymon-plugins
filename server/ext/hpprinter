@@ -1,23 +1,25 @@
-#!/bin/bash
+#!/bin/sh
+# explicitly list interesting subtrees to avoid problems like:
+# Error: OID not increasing: IJXXXX-MIB::net-peripheral.3.1 
+oids="
+IJXXXX-MIB::consumable-pages-printed-with-supply
+IJXXXX-MIB::consumables-life
+IJXXXX-MIB::duplex-page-count
+IJXXXX-MIB::energy-star
+IJXXXX-MIB::pcl-total-page-count
+IJXXXX-MIB::postscript-total-page-count
+IJXXXX-MIB::scanner-accessory-total-copy-pages-printed
+HP-LASERJET-COMMON-MIB::total-engine-page-count
+IJXXXX-MIB::total-mono-page-count"
 
 # To enable hpprinter tests, add the "hpprinter" tag to hosts.cfg.
 $XYMONHOME/bin/xymongrep --noextras "hpprinter" | while read ip host hash line; do
     color='clear'
 
-    output=$(snmpwalk -v1 -cpublic $host 1 2>&1)
+    output=$(echo "$oids" | xargs -i sh -c "snmpwalk -v1 -cpublic printer01 {} || exit 255" 2>&1)
     res=$?
 
     if [ $res -eq 0 ]; then
-        rawout="$output"
-        pages=$(echo "$rawout" | grep pages)
-        counts=$(echo "$rawout" | grep count)
-        life=$(echo "$rawout" | grep life)
-        energy=$(echo "$rawout" | grep energy)
-        output="$pages
-$counts
-$life
-$energy"
-        # cleanup
         output=$(echo "$output" | grep INTEGER | cut -d: -f3- | sed -r 's/.0\s*=\s*INTEGER//' | sort -u)
         # TODO: tresholds and colors?
         color='green'
@@ -29,5 +31,6 @@ $energy"
     ( echo "status $host.printer $color `date`"
       echo
       echo "$output"
-    ) | bb $XYMSRV @
+    ) | $XYMON $XYMSRV @
 done
+
