@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# To enable opnsense tests, add the "minecraft[:<port>]" tag to hosts.cfg.
+import os
+import logging
+import subprocess
+import Hobbit
+import mcping
+
+logging.basicConfig()
+logger = logging.getLogger()
+#logger.setLevel(logging.DEBUG)
+
+def monitor_server(ip, host, port=25565):
+    bb = Hobbit.Hobbit(test='minecraft', hostname=host);
+
+    try:
+        ping = mcping.StatusPing(host, port)
+        status = ping.get_status()
+    except:
+        bb.color_line('red', 'Error reading status from %s:%s' % (host, port))
+        bb.send()
+        return
+
+    bb.add_color('green')
+    bb.lineprint("server: %s (version: %s)" % (status['description']['text'], status['version']['name']))
+    bb.lineprint("ping: %d ms" % status['ping'])
+    bb.lineprint("players max: %d" % status['players']['max'])
+    bb.lineprint("players online: %d" % status['players']['online'])
+    bb.lineprint("players:")
+    for player in status['players'].get('sample', []):
+        bb.lineprint("    %s (%s)" % (player['name'], player['id']))
+
+    bb.send()
+
+hosts = subprocess.Popen('xymongrep --noextras minecraft\*', shell=True, stdout=subprocess.PIPE)
+for line in hosts.stdout:
+    ip, host, _, tag = line.decode().strip().split(' ')
+    port = 25265
+    if ':' in tag:
+        port = int(tag.split(':')[-1])
+    monitor_server(ip, host, port)

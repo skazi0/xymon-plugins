@@ -24,7 +24,7 @@ class Hobbit:
             self.hostname=socket.getfqdn()
         else:
             self.hostname=hostname
-        self.hostname=string.replace(self.hostname, '.', ',')
+        self.hostname=self.hostname.replace('.', ',')
         #self.text=''
         self.hostclass=test
         self.textarr=[]
@@ -79,7 +79,7 @@ class Hobbit:
             proc = subprocess.Popen([os.environ['BB'], os.environ['BBDISP'],'@'],
                                     stdin=subprocess.PIPE,
                                    )
-            proc.communicate(report)
+            proc.communicate(report.encode())
         else:
             print(report)
 
