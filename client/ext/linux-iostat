@@ -21,7 +21,7 @@ foreach my $vmstat (`iostat -d -k -p ALL`) {
    if ( $vmstat =~ /^ram/ ) { next ; }
    if ( $vmstat =~ /^loop/ ) { next ; }
    if ( $vmstat =~ /^sr0/ ) {  next ; }
-   if ( $vmstat =~ /^sd[a-z]/ or $vmstat =~ /^hd[a-z]/ or $vmstat =~ /^md\d/ or $vmstat =~ /^vd[a-z]/ ) {
+   if ( $vmstat =~ /^sd[a-z]/ or $vmstat =~ /^hd[a-z]/ or $vmstat =~ /^md\d/ or $vmstat =~ /^vd[a-z]/ or $vmstat =~ /^mmcblk\d/ ) {
       $vmstat =~ s/\.//g ;
       $vmstat =~ s/,//g ;
       my @split = split " ", $vmstat ;
@@ -40,7 +40,7 @@ foreach my $vmstat (`iostat -d -p ALL`) {
    if ( $vmstat =~ /^ram/ ) { next ; }
    if ( $vmstat =~ /^loop/ ) { next ; }
    if ( $vmstat =~ /^sr0/ ) { next ; }
-   if ( $vmstat =~ /^sd[a-z]/ or $vmstat =~ /^hd[a-z]/ or $vmstat =~ /^md\d/ or $vmstat =~ /^vd[a-z]/ ) {
+   if ( $vmstat =~ /^sd[a-z]/ or $vmstat =~ /^hd[a-z]/ or $vmstat =~ /^md\d/ or $vmstat =~ /^vd[a-z]/ or $vmstat =~ /^mmcblk\d/ ) {
       $vmstat =~ s/\.//g ;
       $vmstat =~ s/,//g ;
       my @split = split " ", $vmstat ;
@@ -55,7 +55,8 @@ foreach my $vmstat (`iostat -d -p ALL`) {
 foreach my $key (keys(%result)) {
    my @split = split ":", $result{$key} ;
    # If there is number at the end, it is a partition, otherwise it is the whole disk
-   if ( $key =~ /\d$/ ) {
+   # Except mmcblk0 which is a disk while mmcblk0p1 is a partition
+   if ( $key =~ /\d$/ and $key !~ /^mmcblk\d$/ ) {
       $rrd_return .= "[iostat-part.$key.rrd]\n" ;
    } else {
       $rrd_return .= "[iostat-disk.$key.rrd]\n" ;
