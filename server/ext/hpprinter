@@ -13,10 +13,13 @@ HP-LASERJET-COMMON-MIB::total-engine-page-count
 IJXXXX-MIB::total-mono-page-count"
 
 # To enable hpprinter tests, add the "hpprinter" tag to hosts.cfg.
-$XYMONHOME/bin/xymongrep --noextras "hpprinter" | while read ip host hash line; do
+$XYMONHOME/bin/xymongrep "hpprinter" | while read ip host hash line; do
     color='clear'
 
-    output=$(echo "$oids" | xargs -i sh -c "snmpwalk -v1 -cpublic printer01 {} || exit 255" 2>&1)
+    ping -c1 $host 2>&1 > /dev/null
+    offline=$?
+
+    output=$(echo "$oids" | xargs -i sh -c "snmpwalk -v1 -cpublic $host {} || exit 255" 2>&1)
     res=$?
 
     if [ $res -eq 0 ]; then
@@ -25,6 +28,11 @@ $XYMONHOME/bin/xymongrep --noextras "hpprinter" | while read ip host hash line; 
         color='green'
     else
         color='red'
+    fi
+
+    # switch to clear for offline dialup nodes
+    if [ $offline -eq 1 ] && echo "$line" | grep -q dialup; then
+        color='clear'
     fi
 
     # send status
