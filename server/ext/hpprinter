@@ -15,17 +15,29 @@ IJXXXX-MIB::total-mono-page-count"
 # To enable hpprinter tests, add the "hpprinter" tag to hosts.cfg.
 $XYMONHOME/bin/xymongrep "hpprinter" | while read ip host hash line; do
     color='clear'
+    status='OK'
 
     ping -c1 $host 2>&1 > /dev/null
     offline=$?
 
-    output=$(echo "$oids" | xargs -i sh -c "snmpwalk -v1 -cpublic $host {} || exit 255" 2>&1)
+    output=$(echo "$oids" | xargs -i sh -c "snmpwalk -Os -v1 -cpublic $host {} || exit 255" 2>&1)
     res=$?
 
     if [ $res -eq 0 ]; then
-        output=$(echo "$output" | grep INTEGER | cut -d: -f3- | sed -r 's/.0\s*=\s*INTEGER//' | sort -u)
-        # TODO: tresholds and colors?
-        color='green'
+        # translate some known counter names not fully printed by snmpwalk
+        output=$(echo "$output" | sed 's/consumables-life.3.1/consumable-life-low-threshold/')
+        output=$(echo "$output" | sed 's/consumables-life.1.1/consumable-life-usage-units-remaining/')
+        output=$(echo "$output" | grep INTEGER | sed -r 's/.0\s*=\s*INTEGER//' | sort -u)
+
+        # thresholds and colors
+        thresh=$(echo "$output" | grep consumable-life-low-threshold | cut -d: -f2)
+        remain=$(echo "$output" | grep consumable-life-usage-units-remaining | cut -d: -f2)
+        if [ $remain -le $thresh ]; then
+            color='yellow'
+            status='Not OK - Consumables LOW'
+        else
+            color='green'
+        fi
     else
         color='red'
     fi
@@ -33,10 +45,11 @@ $XYMONHOME/bin/xymongrep "hpprinter" | while read ip host hash line; do
     # switch to clear for offline dialup nodes
     if [ $offline -eq 1 ] && echo "$line" | grep -q dialup; then
         color='clear'
+        status='OK - Dialup host offline'
     fi
 
     # send status
-    ( echo "status $host.printer $color `date`"
+    ( echo "status $host.printer $color `date` $status"
       echo
       echo "$output"
     ) | $XYMON $XYMSRV @
