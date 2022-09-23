@@ -1,15 +1,22 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # To enable unifi-snmp tests, add the "unifi-snmp" tag to hosts.cfg. place password in snmppasswd file in $XYMONHOME directory
 import os
+import re
 import subprocess
 import Hobbit
-import netsnmp
 from collections import defaultdict
 from pprint import pprint
 
 username = 'status'
 passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'snmppasswd')
+
+class VB:
+    def __init__(self, tag, iid, type, val):
+        self.tag = tag
+        self.iid = iid
+        self.type = type.upper()
+        self.val = val
 
 def get_password(host, username, passfile):
     with open(passfile) as f:
@@ -22,12 +29,17 @@ def get_password(host, username, passfile):
 def fetch_snmp_values(ip, host, username, password, queries):
     out = []
     for query in queries:
-        oid = netsnmp.VarList(netsnmp.Varbind(query))
-        netsnmp.snmpwalk(oid, DestHost=ip, Version=3,
-            SecName=username, SecLevel='authPriv',
-            AuthProto='SHA', AuthPass=password,
-            PrivProto='AES', PrivPass=password)
-        out += oid
+        walk = subprocess.Popen('snmpwalk -Oe -v3 -l authPriv -u %s -a SHA -A "%s" -x AES -X "%s" %s %s' % (username, password, password, ip, query),
+            shell=True, stdout=subprocess.PIPE)
+        vbs = []
+        for line in walk.stdout:
+            m = re.match(r"(.*)::(.*)\.(\d+) = (.*): (.*)", line.decode())
+            if not m:
+#                print("ERROR: no match line: %s" % line)
+                continue
+            (name, idx, type, val) = (m.group(2), m.group(3), m.group(4), m.group(5))
+            vbs.append(VB(name, idx, type, val))
+        out += vbs
     return out
 
 def extract_snmp_values(values, prefix, key):
@@ -36,6 +48,7 @@ def extract_snmp_values(values, prefix, key):
         'INTEGER': int,
         'INTEGER32': int,
         'COUNTER': int,
+        'COUNTER32': int,
     }
     iret = defaultdict(dict)
     used_vbs = []
@@ -86,13 +99,13 @@ def netstats(values, ip, host):
     join_ifs(ifs, unifivaps)
     join_ifs(ifs, unifiifs)
 
-    for iface, data in ifs.iteritems():
+    for iface, data in ifs.items():
         trends.lineprint("[ifstat,%s.rrd]" % iface)
         trends.lineprint("DS:bytesReceived:DERIVE:600:0:U %d" % data['inOctets'])
         trends.lineprint("DS:bytesSent:DERIVE:600:0:U %d" % data['outOctets'])
 
     # radio stats
-    for iface, data in ifs.iteritems():
+    for iface, data in ifs.items():
         if 'radio' not in data:
             continue
         name = '%s-%s' % (data.get('essId', data.get('name')).lower(), data['radio'])
@@ -177,5 +190,5 @@ def monitor_accesspoint(ip, host):
 
 hosts = subprocess.Popen('xymongrep --noextras unifi-snmp', shell=True, stdout=subprocess.PIPE)
 for line in hosts.stdout:
-    ip, host = line.split(' ')[:2]
+    ip, host = line.decode().split(' ')[:2]
     monitor_accesspoint(ip, host)

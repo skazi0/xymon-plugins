@@ -1,14 +1,21 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # To enable zyxel-snmp tests, add the "zyxel-snmp" tag to hosts.cfg. place password in snmppasswd file in $XYMONHOME directory
 import os
+import re
 import subprocess
 import Hobbit
-import netsnmp
 from collections import defaultdict
 
 username = 'status'
 passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'snmppasswd')
+
+class VB:
+    def __init__(self, tag, iid, type, val):
+        self.tag = tag
+        self.iid = iid
+        self.type = type.upper()
+        self.val = val
 
 def get_password(host, username, passfile):
     with open(passfile) as f:
@@ -18,12 +25,23 @@ def get_password(host, username, passfile):
                 return parts[2]
     return ''
 
-def fetch_snmp_values(ip, host, username, password, query):
-    oid = netsnmp.VarList(netsnmp.Varbind(query))
+def fetch_snmp_values(ip, host, username, password, queries):
+    out = []
+    for query in queries:
+        walk = subprocess.Popen('snmpwalk -Oe -v3 -l authNoPriv -u %s -a SHA -A "%s" %s %s' % (username, password, ip, query),
+            shell=True, stdout=subprocess.PIPE)
+        vbs = []
+        for line in walk.stdout:
+            m = re.match(r"(.*)::(.*)\.(\d+) = (.*): (.*)", line.decode())
+            print(line.decode())
+            if not m:
+#                print("ERROR: no match line: %s" % line)
+                continue
+            (name, idx, type, val) = (m.group(2), m.group(3), m.group(4), m.group(5))
+            vbs.append(VB(name, idx, type, val))
+        out += vbs
+    return out
 
-    netsnmp.snmpwalk(oid, DestHost=ip, Version=3, SecName=username, SecLevel='authNoPriv', AuthProto='SHA', AuthPass=password)
-
-    return oid
 
 def split_snmp_name(name, props):
     for prop in props:
@@ -70,7 +88,7 @@ def monitor_switch(ip, host):
         'temperature': 'temp',
     }
 
-    values = fetch_snmp_values(ip, host, username, password, 'ZYXEL-ES-SMI::esMgmt.26')
+    values = fetch_snmp_values(ip, host, username, password, ['ZYXEL-ES-SMI::esMgmt.26'])
 
     bb = Hobbit.Hobbit(test='temp', hostname=host)
     trends = Hobbit.trends(hostname=host)
@@ -82,7 +100,7 @@ def monitor_switch(ip, host):
 
     sensors = parse_snmp_values(values, 'zyHwMonitor', ['LowThreshold', 'HighThreshold', 'NominalValue', 'CurrentValue', 'Status', 'MaxValue', 'MinValue', 'Description'])
 
-    for name,data in sensors.iteritems():
+    for name,data in sensors.items():
         datatype = data['type']
         data['currentValue'] *= factors.get(datatype, 1.0)
         bb.color_line(status_colors.get(data['status'].lower(), 'red'), '%s: %g %s' % (data['description'], data['currentValue'], units[datatype]))
@@ -95,5 +113,5 @@ def monitor_switch(ip, host):
 
 hosts = subprocess.Popen('xymongrep --noextras zyxel-snmp', shell=True, stdout=subprocess.PIPE)
 for line in hosts.stdout:
-    ip, host = line.split(' ')[:2]
+    ip, host = line.decode().split(' ')[:2]
     monitor_switch(ip, host)

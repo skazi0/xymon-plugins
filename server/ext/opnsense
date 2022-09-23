@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # To enable opnsense tests, add the "opnsense" tag to hosts.cfg. place password in opnsensepasswd file in $XYMONHOME directory
 import os
@@ -188,5 +188,5 @@ def monitor_firewall(ip, host):
 
 hosts = subprocess.Popen('xymongrep --noextras opnsense', shell=True, stdout=subprocess.PIPE)
 for line in hosts.stdout:
-    ip, host = line.split(' ')[:2]
+    ip, host = str(line).split(' ')[:2]
     monitor_firewall(ip, host)
