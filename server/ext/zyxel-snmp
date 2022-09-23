@@ -33,7 +33,6 @@ def fetch_snmp_values(ip, host, username, password, queries):
         vbs = []
         for line in walk.stdout:
             m = re.match(r"(.*)::(.*)\.(\d+) = (.*): (.*)", line.decode())
-            print(line.decode())
             if not m:
 #                print("ERROR: no match line: %s" % line)
                 continue
