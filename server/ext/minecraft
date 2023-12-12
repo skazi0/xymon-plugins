@@ -23,7 +23,7 @@ def monitor_server(ip, host, port=25565):
         return
 
     bb.add_color('green')
-    bb.lineprint("server: %s (version: %s)" % (status['description']['text'], status['version']['name']))
+    bb.lineprint("server: %s (version: %s)" % (status['description'], status['version']['name']))
     bb.lineprint("ping: %d ms" % status['ping'])
     bb.lineprint("players max: %d" % status['players']['max'])
     bb.lineprint("players online: %d" % status['players']['online'])
