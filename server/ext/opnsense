@@ -47,6 +47,12 @@ def firmware_status(host, api):
 
     return r.json()
 
+def interfaces_info(host, api):
+    r = api.get('https://%s/api/interfaces/overview/interfacesInfo/1' % host)
+    if not r.ok:
+        return None
+    return r.json()['rows']
+
 def web_auth(wapi, host, username, password):
     # fetch index to get CSRF token
     r = wapi.get('https://%s/' % host)
@@ -174,14 +180,18 @@ def monitor_firewall(ip, host):
         trends.lineprint("DS:pct:GAUGE:600:0:100 %g" % (100. * used / size))
         trends.lineprint("DS:used:GAUGE:600:0:U %d" % used)
 
-    for iface in wdata['interfaces']:
-        trends.lineprint("[ifstat,%s.rrd]" % iface['name'])
-        trends.lineprint("DS:bytesReceived:DERIVE:600:0:U %d" % int(iface['inbytes']))
-        trends.lineprint("DS:bytesSent:DERIVE:600:0:U %d" % int(iface['outbytes']))
-
     for temp in wdata['temperature']:
         trends.lineprint("[temp,%s.rrd]" % temp['device'].replace('.', '_'))
         trends.lineprint("DS:temp:GAUGE:600:U:U %g" % float(temp['temperature']))
+
+    interfaces = interfaces_info(host, api)
+    for intf in interfaces:
+        if 'config' not in intf:
+            continue
+        name = intf['config']['descr']
+        trends.lineprint("[ifstat,%s.rrd]" % name)
+        trends.lineprint("DS:bytesReceived:DERIVE:600:0:U %d" % int(intf['statistics']['bytes received']))
+        trends.lineprint("DS:bytesSent:DERIVE:600:0:U %d" % int(intf['statistics']['bytes transmitted']))
 
     trends.send()
     client.send()
