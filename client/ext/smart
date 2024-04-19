@@ -23,7 +23,7 @@ my $CACHEFILE = "$ENV{'XYMONTMP'}/$ENV{'MACHINEDOTS'}.smart.cache";
 unless (@disks) {
     opendir(DIR, '/dev') or die $!;
     while (my $dev = readdir(DIR)) {
-        push(@disks, "/dev/$dev") if ($dev =~ /^[vs]d.*\D$/);
+        push(@disks, "/dev/$dev") if ($dev =~ /^([vs]d.*\D|nvme\d+n\d+)$/);
     }
     closedir(DIR);
 }
@@ -101,6 +101,11 @@ if (time() - $mtime > $CACHETIME * 60)
                 $lstatus = 'yellow' if ($status =~ /Aborted by host|Interrupted \(host reset\)/);
                 $lstatus = 'green' if ($status =~ /Completed without error|Self-test routine in progress|Interrupted \(host reset\)/);
                 print OUT "&$lstatus $line";
+            }
+            elsif ($line =~ /^\s*Media and Data Integrity Errors:\s+(\d+)/)
+            {
+                my $lstatus = $1 > 0 ? 'red' : 'green';
+                print OUT "&$lstatus $line"
             }
             else
             {
