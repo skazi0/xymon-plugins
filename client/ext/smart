@@ -136,7 +136,7 @@ if (time() - $mtime > $CACHETIME * 60)
 
                 print OUT "&$lstatus $line";
 
-                $ncv .= "$name-$aname-value : $value\n";
+                $ncv .= "$name-$aname-raw : $value\n";
             }
             else
             {
