@@ -38,11 +38,15 @@ if (time() - $mtime > $CACHETIME * 60)
     foreach my $name (@disks)
     {
         print OUT ('=' x 20) . " $name " . ('=' x 20) . "\n";
-        my @output = `sudo smartctl -AHi -l error -l selftest $name 2>&1` or die;
+        # TODO: remove after smartmontools get this https://www.smartmontools.org/ticket/1741
+        my $sname = $name;
+        $sname =~ s/n1$//;
+        my @output = `sudo smartctl -AHi -l error -l selftest $sname 2>&1` or die;
         my $ncv = '';
         my $newerr = 1;
         my $ponhours = undef;
         my $lasttest = undef;
+        my $inattrs = 0;
         foreach my $line (@output)
         {
             # skip header
@@ -102,13 +106,45 @@ if (time() - $mtime > $CACHETIME * 60)
                 $lstatus = 'green' if ($status =~ /Completed without error|Self-test routine in progress|Interrupted \(host reset\)/);
                 print OUT "&$lstatus $line";
             }
-            elsif ($line =~ /^\s*Media and Data Integrity Errors:\s+(\d+)/)
+            elsif ($line =~ /^\s*\d+\s+(Extended|Short)\s+(.*)\s+(\d+)\s+\S+\s+\S+\s+/)
             {
-                my $lstatus = $1 > 0 ? 'red' : 'green';
-                print OUT "&$lstatus $line"
+                my $status = $2;
+                my $lifetime = $3;
+                my $lstatus = 'red';
+                $lasttest = $lifetime if (!defined($lasttest));
+#                $lstatus = 'yellow' if ($status =~ /Aborted by host|Interrupted \(host reset\)/);
+                $lstatus = 'green' if ($status =~ /Completed without error/);
+                print OUT "&$lstatus $line";
+            }
+            elsif ($inattrs && $line =~ /^\s*(.+):\s+(.+)$/)
+            {
+                my ($aname, $value) = ($1, $2);
+                $aname =~ s/\s+/_/g;
+                my $lstatus = 'green';
+                if ($aname =~ /Media_and_Data_Integrity_Errors/)
+                {
+                    $lstatus = $value > 0 ? 'red' : 'green';
+                }
+                if ($aname =~ /Critical_Warning/)
+                {
+                    $lstatus = $value !~ /0x00/ ? 'red' : 'green';
+                }
+                elsif ($aname =~ /Power_On_Hours/)
+                {
+                    $ponhours = $value;
+                }
+
+                print OUT "&$lstatus $line";
+
+                $ncv .= "$name-$aname-value : $value\n";
             }
             else
             {
+                if ($line =~ /SMART\/Health Information \(NVMe Log 0x02\)/) {
+                    $inattrs = 1;
+                } elsif ($line =~ /^\s*$/) {
+                    $inattrs = 0;
+                }
                 print OUT "   $line";
             }
         }
