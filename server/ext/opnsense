@@ -6,6 +6,8 @@ import logging
 import time
 import subprocess
 import requests
+import sseclient
+import json
 from bs4 import BeautifulSoup
 import Hobbit
 from xymon_utils import cache as xymon_cache
@@ -120,70 +122,93 @@ def monitor_firewall(ip, host):
     api = requests.session()
     api.auth = (key, secret)
 
-    check_updates(host, api)
+#    check_updates(host, api)
 
-    wapi = requests.session()
-    if not web_auth(wapi, host, username, password):
-        print('ERROR: web_auth failed.')
-        return
+    def get_api(path, stream=False, headers={}):
+        if stream:
+            headers['Accept'] = 'text/event-stream'
+        r = api.get('https://%s/api/%s' % (host, path), stream=stream, headers=headers)
+        if r.status_code != 200:
+            print('ERROR: API request failed: ' + path)
+            return None
+        if stream:
+            client = sseclient.SSEClient(r)
+            # wait some sec for stream to "stabilize"
+            # this is mostly for CPU stats
+            n = 0
+            for event in client.events():
+                n += 1
+                if n > 5:
+                    client.close()
+                    return json.loads(event.data)
+        else:
+            return r.json()
 
-    r = wapi.get('https://%s/widgets/api/get.php' % host, params={'load': ','.join(['system', 'interfaces', 'gateway', 'temperature'])})
-    if r.status_code != 200:
-        return None
-
-    wdata = r.json()['data']
-
-    trends = Hobbit.trends(hostname=host)
     client = Hobbit.Hobbit(test='freebsd', type='client', hostname=host.replace('.', ','));
 
+    data = get_api('diagnostics/system/systemInformation')
     client.lineprint('[osversion]')
-    for line in wdata['system']['versions']:
+    for line in data['versions']:
         client.lineprint(line)
+    data = get_api('diagnostics/system/systemTime')
     client.lineprint('[date]')
-    client.lineprint(wdata['system']['date_frmt'])
+    client.lineprint(data['datetime'])
+    client.lineprint('[uptime]')
+    client.lineprint(data['uptime'])
+    client.send()
 
-    trends.lineprint("[la.rrd]")
-    trends.lineprint("DS:la:GAUGE:600:U:U %g" % (100. * float(wdata['system']['cpu']['load'][1])))
+    trends = Hobbit.trends(hostname=host)
+#    trends.lineprint("[la.rrd]")
+#    trends.lineprint("DS:la:GAUGE:600:U:U %g" % (100. * float(data['system']['cpu']['load'][1])))
 
+    data = get_api('diagnostics/cpu_usage/stream', stream=True)
     trends.lineprint("[vmstat.rrd]")
-    trends.lineprint("DS:cpu_sys:GAUGE:600:0:U %g" % float(wdata['system']['cpu']['sys']))
-    trends.lineprint("DS:cpu_usr:GAUGE:600:0:U %g" % (float(wdata['system']['cpu']['user'])+float(wdata['system']['cpu']['nice'])))
-    trends.lineprint("DS:cpu_idl:GAUGE:600:0:U %g" % float(wdata['system']['cpu']['idle']))
-    trends.lineprint("DS:cpu_int:GAUGE:600:0:U %g" % float(wdata['system']['cpu']['intr']))
+    trends.lineprint("DS:cpu_sys:GAUGE:600:0:U %g" % float(data['sys']))
+    trends.lineprint("DS:cpu_usr:GAUGE:600:0:U %g" % (float(data['user'])+float(data['nice'])))
+    trends.lineprint("DS:cpu_idl:GAUGE:600:0:U %g" % float(data['idle']))
+    trends.lineprint("DS:cpu_int:GAUGE:600:0:U %g" % float(data['intr']))
     trends.lineprint("DS:cpu_wait:GAUGE:600:0:U U")
 
+    data = get_api('diagnostics/system/systemResources')
     trends.lineprint("[memory.actual.rrd]")
-    trends.lineprint("DS:realmempct:GAUGE:600:0:U %g" % percent_used(wdata['system']['kernel']['memory']))
+    trends.lineprint("DS:realmempct:GAUGE:600:0:U %g" % percent_used(data['memory']))
     trends.lineprint("[memory.real.rrd]")
     trends.lineprint("DS:realmempct:GAUGE:600:0:U U")
-    trends.lineprint("[memory.swap.rrd]")
-    if wdata['system']['disk']['swap']:
-        trends.lineprint("DS:realmempct:GAUGE:600:0:U %g" % percent_used(wdata['system']['disk']['swap']))
-    else:
-        trends.lineprint("DS:realmempct:GAUGE:600:0:U U")
 
+#    data = get_api('diagnostics/system/systemSwap')
+#    trends.lineprint("[memory.swap.rrd]")
+#    if data['system']['disk']['swap']:
+#        trends.lineprint("DS:realmempct:GAUGE:600:0:U %g" % percent_used(data['system']['disk']['swap']))
+#    else:
+#        trends.lineprint("DS:realmempct:GAUGE:600:0:U U")
+
+    data = get_api('diagnostics/firewall/pfStates')
     trends.lineprint("[states.rrd]")
-    trends.lineprint("DS:used:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['pf']['states']))
-    trends.lineprint("DS:max:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['pf']['maxstates']))
-    trends.lineprint("DS:usedpct:GAUGE:600:U:U %g" % percent_used(wdata['system']['kernel']['pf'], 'states', 'maxstates'))
+    trends.lineprint("DS:used:GAUGE:600:U:U %d" % int(data['current']))
+    trends.lineprint("DS:max:GAUGE:600:U:U %d" % int(data['limit']))
+    trends.lineprint("DS:usedpct:GAUGE:600:U:U %g" % percent_used(data, 'current', 'limit'))
 
-    trends.lineprint("[mbuf.rrd]")
-    trends.lineprint("DS:used:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['mbuf']['total']))
-    trends.lineprint("DS:max:GAUGE:600:U:U %d" % int(wdata['system']['kernel']['mbuf']['max']))
-    trends.lineprint("DS:usedpct:GAUGE:600:U:U %g" % percent_used(wdata['system']['kernel']['mbuf'], 'total', 'max'))
+#    data = get_api('diagnostics/system/systemMbuf')
+#    trends.lineprint("[mbuf.rrd]")
+#    trends.lineprint("DS:used:GAUGE:600:U:U %d" % int(data['mbuf-statistics']['mbuf-current']))
+#    trends.lineprint("DS:max:GAUGE:600:U:U %d" % int(data['mbuf-statistics']['mbuf-total']))
+#    trends.lineprint("DS:usedpct:GAUGE:600:U:U %g" % percent_used(data['mbuf-statistics'], 'mbuf-current', 'mbuf-total'))
 
-    for disk in wdata['system']['disk']['devices']:
+    data = get_api('diagnostics/system/systemDisk')
+    for disk in data['devices']:
         name = disk['mountpoint'][1:] or 'root'
-        size = size_to_bytes(disk['size'])
+        size = size_to_bytes(disk['available'])
         used = size_to_bytes(disk['used'])
         trends.lineprint("[disk,%s.rrd]" % name)
         trends.lineprint("DS:pct:GAUGE:600:0:100 %g" % (100. * used / size))
         trends.lineprint("DS:used:GAUGE:600:0:U %d" % used)
 
-    for temp in wdata['temperature']:
+    data = get_api('diagnostics/system/systemTemperature')
+    for temp in data:
         trends.lineprint("[temp,%s.rrd]" % temp['device'].replace('.', '_'))
         trends.lineprint("DS:temp:GAUGE:600:U:U %g" % float(temp['temperature']))
 
+#    data = get_api('diagnostics/interface/getInterfaceStatistics')
     interfaces = interfaces_info(host, api)
     for intf in interfaces:
         if 'config' not in intf:
@@ -194,7 +219,6 @@ def monitor_firewall(ip, host):
         trends.lineprint("DS:bytesSent:DERIVE:600:0:U %d" % int(intf['statistics']['bytes transmitted']))
 
     trends.send()
-    client.send()
 
 hosts = subprocess.Popen('xymongrep --noextras opnsense', shell=True, stdout=subprocess.PIPE)
 for line in hosts.stdout:
