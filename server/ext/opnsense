@@ -122,7 +122,7 @@ def monitor_firewall(ip, host):
     api = requests.session()
     api.auth = (key, secret)
 
-#    check_updates(host, api)
+    check_updates(host, api)
 
     def get_api(path, stream=False, headers={}):
         if stream:
