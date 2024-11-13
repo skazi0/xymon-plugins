@@ -4,12 +4,19 @@
 import os
 import re
 import subprocess
+import requests
+import json
 import Hobbit
 from collections import defaultdict
 from pprint import pprint
 
 username = 'status'
 passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'snmppasswd')
+
+ctrluser = 'xymon'
+ctrlport = 8443
+ctrlsite = 'default'
+ctrlpasswordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'unifipasswd')
 
 class VB:
     def __init__(self, tag, iid, type, val):
@@ -124,7 +131,7 @@ def netstats(values, ip, host):
 
     trends.send()
 
-def monitor_accesspoint(ip, host):
+def monitor_accesspoint(ip, host, ap_stat):
     password = get_password(host, username, passwordfile)
 
     values = fetch_snmp_values(ip, host, username, password, [
@@ -156,6 +163,21 @@ def monitor_accesspoint(ip, host):
         bb.send()
         return
 
+    if ip not in ap_stat:
+        bb.color_line('red', 'AP stats not found on controller.')
+        bb.send()
+        return
+
+    if ap_stat[ip]['upgradable']:
+        bb.color_line('yellow', 'Firmware: Update available ('+ap_stat[ip]['version']+' -> '+ap_stat[ip]['upgrade_to_firmware']+')')
+    else:
+        bb.color_line('green', 'Firmware: Up to date')
+
+    trends.lineprint("[unifi.clients.rrd]")
+    trends.lineprint("DS:count:GAUGE:600:U:U %g" % ap_stat[ip]['num_sta'])
+    trends.lineprint("[unifi.guests.rrd]")
+    trends.lineprint("DS:count:GAUGE:600:U:U %g" % ap_stat[ip]['guest-num_sta'])
+
     # this call removes network specific stats from `values`
     netstats(values, ip, host)
 
@@ -184,11 +206,41 @@ def monitor_accesspoint(ip, host):
     trends.lineprint("[memory.swap.rrd]")
     trends.lineprint("DS:realmempct:GAUGE:600:0:U U")
 
+    bb.send()
     client.send()
     trends.send()
 
+def fetch_ctrl_stats():
 
+    # find controller host
+    ctrl = subprocess.Popen('xymongrep --noextras unifi-controller', shell=True, stdout=subprocess.PIPE)
+    ctrls = list(ctrl.stdout)
+    if len(ctrls) > 1:
+        print('More than one controller found.')
+        return {}
+    if len(ctrls) < 1:
+        print('No controller found.')
+        return {}
+    ip, host = ctrls[0].decode().split(' ')[:2]
+    bb = Hobbit.Hobbit(test='unifi', hostname=host)
+    # fetch stats from controller api
+    api = requests.session()
+    auth = {'username': ctrluser, 'password': get_password(host, ctrluser, ctrlpasswordfile)}
+    r = api.post('https://%s:%s/api/login' % (host, ctrlport), data=json.dumps(auth))
+    if r.json()['meta']['rc'] != 'ok':
+        bb.color_line('red', 'Controller auth error.')
+        bb.send()
+        return {}
+    r = api.post('https://%s:%s/api/s/%s/stat/device/' % (host, ctrlport, ctrlsite))
+    if r.json()['meta']['rc'] != 'ok':
+        bb.color_line('red', 'Error fetching stats from controller.')
+        bb.send()
+        return {}
+    return { i['ip']:i for i in r.json()['data'] if i['type'] == 'uap'}
+
+ap_stat = fetch_ctrl_stats()
 hosts = subprocess.Popen('xymongrep --noextras unifi-snmp', shell=True, stdout=subprocess.PIPE)
 for line in hosts.stdout:
     ip, host = line.decode().split(' ')[:2]
-    monitor_accesspoint(ip, host)
+    monitor_accesspoint(ip, host, ap_stat)
+
