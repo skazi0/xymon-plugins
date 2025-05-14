@@ -18,7 +18,7 @@ my $bb = new Hobbit('docker');
 my @output = `sudo /usr/bin/docker ps --format json --no-trunc` or die;
 
 my @header = ("ID", "Image", "Command", "State", "RunningFor", "Ports", "Names");
-my %trims = ("ID" => 12, "Command" => -25);
+my %trims = ("ID" => 12, "Command" => -30);
 
 my ($processed, $columns, $names) = &process_output(\@output);
 
