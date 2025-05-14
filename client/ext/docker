@@ -1,0 +1,113 @@
+#!/usr/bin/perl
+# Author: Jacek Tomasiak <jacek.tomasiak@gmail.com>
+use strict;
+# add script's directory to module search path for Hobbit.pm on non-debian systems
+use FindBin;
+use lib $FindBin::Bin;
+
+use Hobbit;
+use JSON;
+use List::Util qw( min max );
+
+my @CONTAINERS = ();
+
+&load_config("$ENV{'XYMONTMP'}/logfetch.$ENV{'CLIENTHOSTNAME'}.cfg");
+
+my $bb = new Hobbit('docker');
+
+my @output = `sudo /bin/docker ps --format json --no-trunc` or die;
+
+my @header = ("ID", "Image", "Command", "State", "RunningFor", "Ports", "Names");
+my %trims = ("ID" => 12, "Command" => -25);
+
+my ($processed, $columns, $names) = &process_output(\@output);
+
+$bb->print('&clear '.&format_line(\@header, $columns));
+
+foreach my $line (@{$processed})
+{
+    my $color = pop @{$line};
+    $bb->color_print($color, "&$color ".&format_line($line, $columns));
+}
+
+$bb->print("\nMissing containers:\n");
+foreach my $name (@CONTAINERS) {
+    next if (grep /^$name$/, @{$names});
+    $bb->color_print('red', "&red $name\n");
+}
+
+$bb->send;
+
+sub process_output {
+    my @output = @{shift @_};
+    my @ret;
+    my @cols;
+    my @names;
+    foreach my $line (@output)
+    {
+        my @retrow;
+        my $json = from_json($line);
+        foreach my $f (@header)
+        {
+            if (defined $trims{$f})
+            {
+                my $trim = $trims{$f};
+                push @retrow, substr($json->{$f}, 0, $trim) if ($trim > 0);
+                if ($trim < 0)
+                {
+                    push @retrow, $json->{$f} if (length($json->{$f}) <= -$trim-3);
+                    push @retrow, substr($json->{$f}, 0, -$trim-3).'...' if (length($json->{$f}) > -$trim-3);
+                }
+            }
+            else
+            {
+                push @retrow, $json->{$f};
+            }
+        }
+        for my $i (0..$#retrow)
+        {
+            $cols[$i] = max($cols[$i], length($retrow[$i]));
+        }
+        # store xymon colors at the end (not to be printed)
+        if ($json->{'Status'} == 'running')
+        {
+            push @retrow, 'green';
+        }
+        else
+        {
+            push @retrow, 'red';
+        }
+
+        push @ret, \@retrow;
+        push @names, $json->{'Names'};
+    }
+    return \@ret, \@cols, \@names;
+}
+
+sub format_line {
+    my @fields = @{shift @_};
+    my @widths = @{shift @_};
+    my @ret;
+    foreach my $f (@fields)
+    {
+        my $w = shift @widths;
+        push @ret, sprintf("%-${w}s", $f);
+    }
+    return join('  ', @ret)."\n";
+}
+
+sub load_config
+{
+    my $path = shift;
+
+    open C, "<$path" or return;
+    while (my $line = <C>)
+    {
+        next if ($line =~ /^\s*#/);
+        if ($line =~ /DOCKER\s*=\s*['"]?(.*?)["']?\s*$/)
+        {
+            @CONTAINERS = split(/,/, $1);
+        }
+    }
+    close C;
+}
