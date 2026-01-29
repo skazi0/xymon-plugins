@@ -17,7 +17,7 @@ my $bb = new Hobbit('docker');
 
 my @output = `sudo /usr/bin/docker ps --format json --no-trunc` or die;
 
-my @header = ("ID", "Image", "Command", "State", "RunningFor", "Ports", "Names");
+my @header = ("ID", "Image", "Command", "RunningFor", "Status", "Ports", "Names");
 my %trims = ("ID" => 12, "Command" => -30);
 
 my ($processed, $columns, $names) = &process_output(\@output);
@@ -69,13 +69,13 @@ sub process_output {
             $cols[$i] = max($cols[$i], length($retrow[$i]));
         }
         # store xymon colors at the end (not to be printed)
-        if ($json->{'Status'} == 'running')
+        if ($json->{'State'} ne 'running' or $json->{'Status'} =~ /unhealthy/)
         {
-            push @retrow, 'green';
+            push @retrow, 'red';
         }
         else
         {
-            push @retrow, 'red';
+            push @retrow, 'green';
         }
 
         push @ret, \@retrow;
