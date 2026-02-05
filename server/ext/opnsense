@@ -104,6 +104,16 @@ def check_updates(host, api):
 def percent_used(data, usedname='used', totalname='total'):
     return 100. * float(data[usedname]) / float(data[totalname])
 
+def format_table(table):
+    ret = ''
+    cols = {}
+    for row in table:
+        for i, v in enumerate(row):
+            cols[i] = max(cols.get(i, 1), len(str(v)))
+    for row in table:
+        ret += '  '.join([str(v).ljust(cols[i]) if i in [0, len(row)-1] else str(v).rjust(cols[i]) for i,v in enumerate(row)]) + "\n"
+    return ret
+
 def size_to_bytes(value):
     unit = value[-1]
     value = float(value[:-1])
@@ -157,10 +167,24 @@ def monitor_firewall(ip, host):
     client.lineprint(data['datetime'])
     client.lineprint('[uptime]')
     client.lineprint(data['uptime'])
-    client.send()
 
     trends.lineprint("[la.rrd]")
     trends.lineprint("DS:la:GAUGE:600:U:U %g" % (100. * float(data['loadavg'].split(',')[1].strip())))
+
+    data = get_api('diagnostics/system/systemDisk')
+    client.lineprint('[df]')
+    table = []
+    table.append(['Filesystem', '1024-blocks', 'Used', 'Available', 'Capacity', 'Mounted on'])
+    for disk in data['devices']:
+        dev = disk['device']
+        mountpoint = disk['mountpoint']
+        total = size_to_bytes(disk['blocks'])
+        free = size_to_bytes(disk['available'])
+        used = size_to_bytes(disk['used'])
+        pct = (100. * used / total)
+        table.append([dev, int(total/1024), int(used/1024), int(free/1024), f'{int(pct)}%', mountpoint])
+    client.lineprint(format_table(table))
+    client.send()
 
     data = get_api('diagnostics/cpu_usage/stream', stream=True)
     trends.lineprint("[vmstat.rrd]")
@@ -196,14 +220,6 @@ def monitor_firewall(ip, host):
     trends.lineprint("DS:max:GAUGE:600:U:U %d" % int(data['mbuf-statistics']['cluster-max']))
     trends.lineprint("DS:usedpct:GAUGE:600:U:U %g" % percent_used(data['mbuf-statistics'], 'cluster-total', 'cluster-max'))
 
-    data = get_api('diagnostics/system/systemDisk')
-    for disk in data['devices']:
-        name = disk['mountpoint'][1:] or 'root'
-        size = size_to_bytes(disk['available'])
-        used = size_to_bytes(disk['used'])
-        trends.lineprint("[disk,%s.rrd]" % name)
-        trends.lineprint("DS:pct:GAUGE:600:0:100 %g" % (100. * used / size))
-        trends.lineprint("DS:used:GAUGE:600:0:U %d" % used)
 
     data = get_api('diagnostics/system/systemTemperature')
     for temp in data:
