@@ -14,7 +14,7 @@ username = 'status'
 passwordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'snmppasswd')
 
 ctrluser = 'xymon'
-ctrlport = 8443
+ctrlport = 11443
 ctrlsite = 'default'
 ctrlpasswordfile = os.path.join(os.environ.get('XYMONHOME', ''), 'etc', 'unifipasswd')
 
@@ -168,15 +168,16 @@ def monitor_accesspoint(ip, host, ap_stat):
         bb.send()
         return
 
-    if ap_stat[ip]['upgradable']:
-        bb.color_line('yellow', 'Firmware: Update available ('+ap_stat[ip]['version']+' -> '+ap_stat[ip]['upgrade_to_firmware']+')')
+    if ap_stat[ip]['firmwareUpdatable']:
+        bb.color_line('yellow', 'Firmware: Update available ('+ap_stat[ip]['firmwareVersion']+' -> TODO)')
     else:
         bb.color_line('green', 'Firmware: Up to date')
 
     trends.lineprint("[unifi.clients.rrd]")
     trends.lineprint("DS:count:GAUGE:600:U:U %g" % ap_stat[ip]['num_sta'])
-    trends.lineprint("[unifi.guests.rrd]")
-    trends.lineprint("DS:count:GAUGE:600:U:U %g" % ap_stat[ip]['guest-num_sta'])
+# TODO: filter out guests from clients
+#    trends.lineprint("[unifi.guests.rrd]")
+#    trends.lineprint("DS:count:GAUGE:600:U:U %g" % ap_stat[ip]['guest-num_sta'])
 
     # this call removes network specific stats from `values`
     netstats(values, ip, host)
@@ -211,7 +212,6 @@ def monitor_accesspoint(ip, host, ap_stat):
     trends.send()
 
 def fetch_ctrl_stats():
-
     # find controller host
     ctrl = subprocess.Popen('xymongrep --noextras unifi-controller', shell=True, stdout=subprocess.PIPE)
     ctrls = list(ctrl.stdout)
@@ -225,18 +225,33 @@ def fetch_ctrl_stats():
     bb = Hobbit.Hobbit(test='unifi', hostname=host)
     # fetch stats from controller api
     api = requests.session()
-    auth = {'username': ctrluser, 'password': get_password(host, ctrluser, ctrlpasswordfile)}
-    r = api.post('https://%s:%s/api/login' % (host, ctrlport), data=json.dumps(auth))
-    if r.json()['meta']['rc'] != 'ok':
-        bb.color_line('red', 'Controller auth error.')
+    api.headers.update({'X-API-KEY': get_password(host, ctrluser, ctrlpasswordfile)})
+    api.verify = False
+    r = api.get(f'https://{host}:{ctrlport}/proxy/network/integration/v1/sites')
+    if len(r.json()['data']) == 0:
+        bb.color_line('red', 'Error getting sites from controller.')
         bb.send()
         return {}
-    r = api.post('https://%s:%s/api/s/%s/stat/device/' % (host, ctrlport, ctrlsite))
-    if r.json()['meta']['rc'] != 'ok':
-        bb.color_line('red', 'Error fetching stats from controller.')
+    site = [site['id'] for site in r.json()['data'] if site['internalReference'] == ctrlsite][0]
+    r = api.get(f'https://{host}:{ctrlport}/proxy/network/integration/v1/sites/{site}/devices')
+    if len(r.json()['data']) == 0:
+        bb.color_line('red', 'Error fetching devices from controller.')
         bb.send()
         return {}
-    return { i['ip']:i for i in r.json()['data'] if i['type'] == 'uap'}
+    devices = { d['ipAddress']:d for d in r.json()['data'] }
+
+    r = api.get(f'https://{host}:{ctrlport}/proxy/network/integration/v1/sites/{site}/clients')
+    clients = {}
+    for c in r.json()['data']:
+        if c['uplinkDeviceId'] not in clients:
+            clients[c['uplinkDeviceId']] = []
+        clients[c['uplinkDeviceId']].append(c)
+
+    for ip,dev in devices.items():
+        dev['clients'] = clients[dev['id']]
+        dev['num_sta'] = len(dev['clients'])
+
+    return devices
 
 ap_stat = fetch_ctrl_stats()
 hosts = subprocess.Popen('xymongrep --noextras unifi-snmp', shell=True, stdout=subprocess.PIPE)
