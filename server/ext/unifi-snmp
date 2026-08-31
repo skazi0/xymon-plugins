@@ -226,7 +226,6 @@ def fetch_ctrl_stats():
     # fetch stats from controller api
     api = requests.session()
     api.headers.update({'X-API-KEY': get_password(host, ctrluser, ctrlpasswordfile)})
-    api.verify = False
     r = api.get(f'https://{host}:{ctrlport}/proxy/network/integration/v1/sites')
     if len(r.json()['data']) == 0:
         bb.color_line('red', 'Error getting sites from controller.')
